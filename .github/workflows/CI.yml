@@ -7,8 +7,6 @@ on:
   pull_request:
   workflow_dispatch:
 concurrency:
-  # Skip intermediate builds: always.
-  # Cancel intermediate builds: only if it is a pull request build.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 jobs:
@@ -23,13 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version:
-          - '1.11'
-          - '1.12'
-        os:
-          - ubuntu-latest
-          - windows-latest
-          - macos-latest
+        version: ['1.11', '1.12']
+        os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - version: 'pre'
             os: ubuntu-latest
@@ -74,5 +67,5 @@ jobs:
         shell: bash
         run: |
           output=$("$JULIA_DEPOT_PATH/bin/journalier" help)
-          printf '%s\\n' "$output"
+          printf '%s' "$output"
           [[ "$output" == *"Usage: journalier"* ]]
