@@ -1,36 +1,26 @@
-const DEFAULT_JOURNALS = [
-  Journal("jue", "Journal of Urban Economics", "0094-1190"),
-  Journal("rsue", "Regional Science and Urban Economics", "0166-0462"),
-  Journal("restat", "Review of Economics and Statistics", "0034-6535"),
-  Journal("jde", "Journal of Development Economics", "0304-3878"),
-  Journal("aer", "American Economic Review", "0002-8282"),
-  Journal("qje", "Quarterly Journal of Economics", "0033-5533")
-]
-
-function _urlencode(value)
-  join((
-    if (0x41 <= byte <= 0x5a) || (0x61 <= byte <= 0x7a) || (0x30 <= byte <= 0x39) || byte in (0x2d, 0x2e, 0x5f, 0x7e)
-      string(Char(byte))
-    else
-      "%" * uppercase(string(byte, base=16, pad=2))
-    end for byte in codeunits(value)
-  ))
+function _crossrefurl(issn)
+  occursin(r"^[0-9Xx-]+$", issn) || throw(ArgumentError("invalid ISSN: $issn"))
+  "https://api.crossref.org/journals/$issn/works"
 end
 
-function _crossrefurl(issn; recordsperjournal=100, mailto=nothing)
-  occursin(r"^[0-9Xx-]+$", issn) || throw(ArgumentError("invalid ISSN: $issn"))
+function _crossrefquery(recordsperjournal; mailto=nothing)
   1 <= recordsperjournal <= 1000 || throw(ArgumentError("recordsperjournal must be between 1 and 1000"))
-  query = "rows=$recordsperjournal&sort=published&order=desc&select=DOI,title,author,container-title,abstract,URL,published-online,published-print,issued"
-  mailto === nothing || (query *= "&mailto=" * _urlencode(mailto))
-  "https://api.crossref.org/journals/$issn/works?$query"
+  query = Pair{String,String}[
+    "rows" => string(recordsperjournal),
+    "sort" => "updated",
+    "order" => "desc",
+    "select" => "DOI,title,author,container-title,abstract,URL,published-online,published-print,issued"
+  ]
+  mailto === nothing || push!(query, "mailto" => mailto)
+  query
 end
 
 function _crossreftext(record, key; default="")
   value = get(record, key, nothing)
-  value === nothing && return default
   value isa AbstractVector && (value = isempty(value) ? nothing : first(value))
   value === nothing && return default
-  strip(string(value))
+  text = strip(string(value))
+  ifelse(isempty(text), default, text)
 end
 
 function _crossrefauthors(record)
@@ -51,6 +41,7 @@ function _crossrefauthors(record)
   join(names, "; ")
 end
 
+"""Return a Crossref publication date, preferring online, print, then issued."""
 function _crossrefdate(record)
   for key in ("published-online", "published-print", "issued")
     date = get(record, key, nothing)
@@ -72,7 +63,8 @@ end
 function _cleanabstract(value)
   value === nothing && return nothing
   text = replace(string(value), r"<[^>]*>" => " ")
-  for (entity, character) in (("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&#39;", "'"), ("&nbsp;", " "))
+  for (entity, character) in
+      (("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&#39;", "'"), ("&nbsp;", " "))
     text = replace(text, entity => character)
   end
   text = replace(text, "&amp;" => "&")
@@ -80,32 +72,32 @@ function _cleanabstract(value)
   isempty(text) ? nothing : text
 end
 
+"""Convert a Crossref work record to Journalier fields, or `nothing` without a DOI."""
 function _normalizecrossref(record, journalname)
   record isa AbstractDict || throw(ArgumentError("Crossref work record must be an object"))
   doi = lowercase(strip(string(get(record, "DOI", ""))))
   isempty(doi) && return nothing
   title = _crossreftext(record, "title")
   journal = _crossreftext(record, "container-title"; default=journalname)
-  isempty(journal) && (journal = journalname)
   abstract = _cleanabstract(get(record, "abstract", nothing))
-  url = _crossreftext(record, "URL"; default="") 
-  isempty(url) && (url = nothing)
+  url = _crossreftext(record, "URL"; default=nothing)
   (
     doi=doi,
     title=title,
     authors=_crossrefauthors(record),
     journal=journal,
-    abstract=abstract,
+    abstracttext=abstract,
     url=url,
     publishedat=_crossrefdate(record),
     rawmetadata=JSON.json(record)
   )
 end
 
+"""Fetch Crossref work records for one ISSN."""
 function _fetchcrossref(issn; recordsperjournal=100, mailto=nothing)
-  url = _crossrefurl(issn; recordsperjournal, mailto)
+  url = _crossrefurl(issn)
   useragent = mailto === nothing ? "Journalier/0.1.0" : "Journalier/0.1.0 (mailto:$mailto)"
-  response = HTTP.get(url, ["User-Agent" => useragent])
+  response = HTTP.get(url, ["User-Agent" => useragent]; query=_crossrefquery(recordsperjournal; mailto))
   response.status == 200 || error("Crossref request for ISSN $issn returned HTTP $(response.status)")
   payload = JSON.parse(String(response.body))
   message = get(payload, "message", nothing)
@@ -135,7 +127,7 @@ function collectjournal(db, journal::Journal; recordsperjournal=100, mailto=get(
       title=paper.title,
       authors=paper.authors,
       journal=paper.journal,
-      abstract=paper.abstract,
+      abstracttext=paper.abstracttext,
       url=paper.url,
       publishedat=paper.publishedat,
       source="crossref",
@@ -147,7 +139,7 @@ function collectjournal(db, journal::Journal; recordsperjournal=100, mailto=get(
 end
 
 """Fetch and store recent Crossref works for each supplied journal."""
-function collectpapers(db, journals=DEFAULT_JOURNALS; recordsperjournal=100, mailto=get(ENV, "CROSSREF_MAILTO", ""))
+function collectpapers(db, journals=getjournals(db); recordsperjournal=100, mailto=get(ENV, "CROSSREF_MAILTO", ""))
   summaries = NamedTuple[]
   for journal in journals
     push!(summaries, collectjournal(db, journal; recordsperjournal, mailto))

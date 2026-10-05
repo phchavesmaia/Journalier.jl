@@ -1,5 +1,7 @@
 """Create the initial papers table and indexes in an open SQLite database."""
 function initializedb(db)
+  existingjournalstable =
+    !isempty(collect(DBInterface.execute(db, "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'journals'")))
   DBInterface.execute(
     db,
     """
@@ -19,8 +21,27 @@ function initializedb(db)
     	)
     """
   )
+  DBInterface.execute(
+    db,
+    """
+    CREATE TABLE IF NOT EXISTS journals (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      issn TEXT NOT NULL UNIQUE
+    )
+    """
+  )
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_journal_idx ON papers (journal)")
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_first_seen_idx ON papers (first_seen_at)")
+  if !existingjournalstable
+    for journal in INITIAL_JOURNALS
+      DBInterface.execute(
+        db,
+        "INSERT INTO journals (id, name, issn) VALUES (?, ?, ?)",
+        (journal.id, journal.name, journal.issn)
+      )
+    end
+  end
   db
 end
 
@@ -62,7 +83,7 @@ function upsertpaper(
   title,
   authors="",
   journal="",
-  abstract=nothing,
+  abstracttext=nothing,
   url=nothing,
   publishedat=nothing,
   source="crossref",
@@ -84,7 +105,7 @@ function upsertpaper(
 		source = excluded.source,
 		raw_metadata = excluded.raw_metadata
 """,
-    (doi, title, authors, journal, abstract, url, publishedat, source, rawmetadata)
+    (doi, title, authors, journal, abstracttext, url, publishedat, source, rawmetadata)
   )
   getpaper(db, doi)
 end
@@ -121,21 +142,69 @@ end
 
 """Return one paper by DOI, or `nothing` when it is not in the database."""
 function getpaper(db, doi)
-  rows = collect(DBInterface.execute(db, "SELECT * FROM papers WHERE doi = ?", (doi,)))
-  isempty(rows) ? nothing : _paper(only(rows))
+  for row in DBInterface.execute(db, "SELECT * FROM papers WHERE doi = ?", (doi,))
+    return _paper(row)
+  end
+  nothing
 end
 
-"""Return journal names and paper counts, ordered by journal name."""
-function getjournals(db)
-  collect(DBInterface.execute(
+function _normalizeissn(issn)
+  compact = uppercase(replace(strip(issn), "-" => ""))
+  occursin(r"^[0-9]{7}[0-9X]$", compact) || throw(ArgumentError("invalid ISSN: $issn"))
+  compact[1:4] * "-" * compact[5:8]
+end
+
+"""Add a journal to the persistent collection list."""
+function addjournal(db, name, issn)
+  journalname = strip(name)
+  isempty(journalname) && throw(ArgumentError("journal name cannot be empty"))
+  normalizedissn = _normalizeissn(issn)
+  journal = Journal(lowercase(replace(normalizedissn, "-" => "")), journalname, normalizedissn)
+  DBInterface.execute(
     db,
-    """
-    	SELECT journal, COUNT(*) AS paper_count
-    	FROM papers
-    	GROUP BY journal
-    	ORDER BY journal COLLATE NOCASE
-    """
-  ))
+    "INSERT INTO journals (id, name, issn) VALUES (?, ?, ?)",
+    (journal.id, journal.name, journal.issn)
+  )
+  journal
+end
+
+"""Return the configured journals, ordered by name."""
+function getjournals(db)
+  Journal[
+    Journal(row.id, row.name, row.issn) for
+    row in DBInterface.execute(db, "SELECT id, name, issn FROM journals ORDER BY name COLLATE NOCASE")
+  ]
+end
+
+"""Return the configured journal identified by its ID, or nothing."""
+function getjournal(db, id)
+  for row in DBInterface.execute(db, "SELECT id, name, issn FROM journals WHERE id = ?", (id,))
+    return Journal(row.id, row.name, row.issn)
+  end
+  nothing
+end
+
+"""Remove a journal from the collection list without deleting stored papers."""
+function removejournal(db, id)
+  journal = getjournal(db, id)
+  journal === nothing && return false
+  DBInterface.execute(db, "DELETE FROM journals WHERE id = ?", (id,))
+  true
+end
+
+"""Return stored paper counts by Crossref journal title."""
+function getjournalcounts(db)
+  [
+    (journal=row.journal, papercount=row.paper_count) for row in DBInterface.execute(
+      db,
+      """
+      SELECT journal, COUNT(*) AS paper_count
+      FROM papers
+      GROUP BY journal
+      ORDER BY journal COLLATE NOCASE
+      """
+    )
+  ]
 end
 
 """Set a paper's read state. Returns the database execution result."""
