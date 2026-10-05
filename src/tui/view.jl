@@ -49,21 +49,20 @@ function _renderheader(model::ReaderModel, area, buf)
 end
 
 function _renderjournals(model::ReaderModel, area, buf)
-  set_string!(
-    buf,
-    area.x,
-    area.y,
-    " All  $(model.papercount)",
-    tstyle(model.journalindex == 1 ? :accent : :primary, bold=model.journalindex == 1),
-    area
-  )
-  for (offset, journal) in enumerate(model.journals)
-    y = area.y + offset
-    y <= area.y + area.height - 1 || break
-    marker = model.journalindex == offset + 1 ? "▸ " : "  "
-    count = get(model.journalcounts, journal.issn, 0)
-    label = "$(marker)$(_journalabbreviation(journal))  $(count)"
-    set_string!(buf, area.x, y, label, tstyle(model.journalindex == offset + 1 ? :accent : :primary), area)
+  area.height > 0 || return
+  firstindex = max(1, model.journalindex - area.height + 1)
+  lastindex = min(length(model.journals) + 1, firstindex + area.height - 1)
+  for (offset, index) in enumerate(firstindex:lastindex)
+    selected = model.journalindex == index
+    label = if index == 1
+      " All  $(model.papercount)"
+    else
+      journal = model.journals[index - 1]
+      marker = selected ? "▸ " : "  "
+      count = get(model.journalcounts, journal.issn, 0)
+      "$(marker)$(_journalabbreviation(journal))  $(count)"
+    end
+    set_string!(buf, area.x, area.y + offset - 1, label, tstyle(selected ? :accent : :primary, bold=selected), area)
   end
 end
 

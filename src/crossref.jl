@@ -83,7 +83,10 @@ end
 """Convert a Crossref work record to Journalier fields, or `nothing` without a DOI."""
 function _normalizecrossref(record, journalname)
   record isa AbstractDict || throw(ArgumentError("Crossref work record must be an object"))
-  doi = lowercase(strip(string(get(record, "DOI", ""))))
+  rawdoi = get(record, "DOI", nothing)
+  rawdoi === nothing && return nothing
+  rawdoi isa AbstractString || throw(ArgumentError("Crossref DOI field must be a string"))
+  doi = lowercase(strip(rawdoi))
   isempty(doi) && return nothing
   title = _cleanhtml(_crossreftext(record, "title"))
   journal = _cleanhtml(_crossreftext(record, "container-title"; default=journalname))

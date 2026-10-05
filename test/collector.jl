@@ -29,6 +29,9 @@
   @test Journalier._crossreftext(Dict("title" => String[]), "title"; default="Fallback") == "Fallback"
   @test Journalier._crossreftext(Dict("title" => ["  "]), "title"; default="Fallback") == "Fallback"
   @test Journalier._normalizecrossref(Dict("title" => ["No DOI"]), "Fallback Journal") === nothing
+  @test Journalier._normalizecrossref(Dict("DOI" => nothing), "Fallback Journal") === nothing
+  @test Journalier._normalizecrossref(Dict("DOI" => "  "), "Fallback Journal") === nothing
+  @test_throws ArgumentError Journalier._normalizecrossref(Dict("DOI" => 123), "Fallback Journal")
   @test Journalier._normalizecrossref(Dict("DOI" => "10.1234/no-url", "URL" => " "), "Fallback Journal").url === nothing
   @test Journalier._crossrefurl("0094-1190", "https://api.crossref.org") ==
         "https://api.crossref.org/journals/0094-1190/works"
@@ -53,7 +56,8 @@ end
     "published-online" => Dict("date-parts" => [[2026, 1, 2]])
   )
   missingdoi = Dict{String,Any}("title" => ["Record without DOI"])
-  items = Ref(Any[item, missingdoi])
+  nulldoi = Dict{String,Any}("DOI" => nothing, "title" => ["Null DOI"])
+  items = Ref(Any[item, missingdoi, nulldoi])
   failrequest = Ref(false)
   receivedmailtos = String[]
   server = HTTP.serve!("127.0.0.1", 0; listenany=true) do request
@@ -72,7 +76,8 @@ end
         journal = addjournal(db, "Urban economics", "1234-5678")
         baseurl = "http://127.0.0.1:$(HTTP.port(server))"
         firstsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
-        @test firstsummary == (journal=journal.name, fetched=2, inserted=1, updated=0, skipped=1)
+        @test firstsummary == (journal=journal.name, fetched=3, inserted=1, updated=0, skipped=2)
+        @test getpaper(db, "nothing") === nothing
 
         paper = only(getpapers(db))
         @test paper.journal_issn == journal.issn
@@ -101,9 +106,9 @@ end
         updateditem = copy(item)
         updateditem["title"] = ["Updated title"]
         pop!(updateditem, "created")
-        items[] = Any[updateditem, missingdoi]
+        items[] = Any[updateditem, missingdoi, nulldoi]
         secondsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
-        @test secondsummary == (journal=journal.name, fetched=2, inserted=0, updated=1, skipped=1)
+        @test secondsummary == (journal=journal.name, fetched=3, inserted=0, updated=1, skipped=2)
         paper = only(getpapers(db))
         @test paper.title == "Updated title"
         @test paper.title_html == "Updated title"

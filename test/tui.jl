@@ -249,3 +249,39 @@ end
     close(db)
   end
 end
+
+@testset "Journal sidebar scrolling" begin
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    for index in 1:20
+      addjournal(db, "Example $index", lpad(string(index), 8, '0'))
+    end
+    addjournal(db, "Zebra Quartz", "9876-5432")
+    model = Journalier.ReaderModel(db)
+    model.focus = :journals
+    for height in (1, 3, 8)
+      Journalier._selectjournal!(model, 1)
+      for direction in (:down, :up)
+        for step in eachindex(model.journals)
+          Tachikoma.update!(model, Tachikoma.KeyEvent(direction))
+          backend = Tachikoma.TestBackend(30, height)
+          area = Tachikoma.Rect(1, 1, 30, height)
+          Journalier._renderjournals(model, area, backend.buf)
+          label = if model.journalindex == 1
+            "All  0"
+          else
+            journal = model.journals[model.journalindex - 1]
+            "▸ $(Journalier._journalabbreviation(journal))  0"
+          end
+          @test Tachikoma.find_text(backend, label) !== nothing
+        end
+      end
+      @test model.journalindex == 1
+    end
+    backend = Tachikoma.TestBackend(30, 1)
+    Journalier._renderjournals(model, Tachikoma.Rect(1, 1, 30, 0), backend.buf)
+    @test strip(Tachikoma.row_text(backend, 1)) == ""
+  finally
+    close(db)
+  end
+end
