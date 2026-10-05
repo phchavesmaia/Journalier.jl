@@ -110,8 +110,8 @@ function upsertpaper(
   getpaper(db, doi)
 end
 
-"""Return papers matching the provided journal, saved, and text filters."""
-function getpapers(db; journal=nothing, saved=nothing, query=nothing, limit=nothing)
+"""Return papers matching journal, saved, text, first-seen, and limit filters."""
+function getpapers(db; journal=nothing, saved=nothing, query=nothing, firstseenafter=nothing, limit=nothing)
   conditions = String[]
   params = Any[]
 
@@ -127,6 +127,10 @@ function getpapers(db; journal=nothing, saved=nothing, query=nothing, limit=noth
     push!(conditions, "(title LIKE ? OR authors LIKE ? OR journal LIKE ? OR abstract LIKE ?)")
     pattern = "%$(strip(query))%"
     append!(params, (pattern, pattern, pattern, pattern))
+  end
+  if firstseenafter !== nothing
+    push!(conditions, "first_seen_at >= ?")
+    push!(params, firstseenafter)
   end
 
   sql = "SELECT * FROM papers"

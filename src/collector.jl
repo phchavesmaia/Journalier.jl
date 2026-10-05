@@ -7,7 +7,7 @@ function _crossrefquery(recordsperjournal; mailto=nothing)
   1 <= recordsperjournal <= 1000 || throw(ArgumentError("recordsperjournal must be between 1 and 1000"))
   query = Pair{String,String}[
     "rows" => string(recordsperjournal),
-    "sort" => "updated",
+    "sort" => "created",
     "order" => "desc",
     "select" => "DOI,title,author,container-title,abstract,URL,published-online,published-print,issued"
   ]

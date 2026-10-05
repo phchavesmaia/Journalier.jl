@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["phcm-desktop <phchavesmaia@gmail.com>"]
 
 [deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DBInterface = "a10d1c49-ce27-4219-8d33-6db1a4562965"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
@@ -11,6 +12,7 @@ SQLite = "0aa819cd-b072-5ff4-a722-6bc24af294d9"
 Tachikoma = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
 
 [compat]
+Dates = "1.10"
 DBInterface = "2.7.0"
 HTTP = "2.8.0"
 JSON = "1.10.0"

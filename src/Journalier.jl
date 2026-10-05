@@ -1,14 +1,21 @@
 module Journalier
 
 using DBInterface
+using Dates
 using HTTP
 using JSON
 using SQLite
+using Tachikoma
+
+import Tachikoma: should_quit, update!, view
 
 include("paper.jl")
 include("journal.jl")
 include("database.jl")
 include("collector.jl")
+include("paths.jl")
+include("tui.jl")
+include("cli.jl")
 
 export Paper,
   Journal,
@@ -26,5 +33,12 @@ export Paper,
   toggleread,
   togglesaved,
   collectjournal,
-  collectpapers
+  collectpapers,
+  configdir,
+  datadir,
+  statedir,
+  configpath,
+  databasepath,
+  runui,
+  main
 end
