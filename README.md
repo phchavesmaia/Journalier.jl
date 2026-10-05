@@ -52,3 +52,5 @@ This beta version requires the current database schema and does not migrate olde
 ## Tests
 
 Run the package test suite with `julia --project=. -e 'using Pkg; Pkg.test()'`.
+
+`test/runtests.jl` loads the paths, configuration, database, collector, TUI, scheduler, and CLI suites in an explicit order. Source files for the database, TUI, and scheduler coordinate their respective implementation directories; Crossref handling and shared text utilities have separate files.

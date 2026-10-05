@@ -13,6 +13,8 @@ import Tachikoma: should_quit, update!, view
 include("paper.jl")
 include("journal.jl")
 include("database.jl")
+include("text.jl")
+include("crossref.jl")
 include("collector.jl")
 include("paths.jl")
 include("config.jl")
