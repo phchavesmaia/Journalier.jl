@@ -51,13 +51,13 @@ end
         write(
           crontab,
           raw"""
-#!/bin/sh
-if [ "$1" = "-l" ]; then
-  while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done < "$JOURNALIER_TEST_CRONTAB"
-else
-  while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > "$JOURNALIER_TEST_CRONTAB"
-fi
-"""
+            #!/bin/sh
+            if [ "$1" = "-l" ]; then
+              while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done < "$JOURNALIER_TEST_CRONTAB"
+            else
+              while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > "$JOURNALIER_TEST_CRONTAB"
+            fi
+          """
         )
         chmod(crontab, 0o755)
         withenv("JOURNALIER_TEST_CRONTAB" => cronpath) do
@@ -65,7 +65,10 @@ fi
           @test read(cronpath, String) == "0 8 * * * backup\n"
           @test Journalier.main(["schedule", "remove"]) == 0
         end
-        write(crontab, "#!/bin/sh\nwhile IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > /dev/null\nexit 1\n")
+        write(
+          crontab,
+          "#!/bin/sh\nwhile IFS= read -r line || [ -n \"\$line\" ]; do printf '%s\\n' \"\$line\"; done > /dev/null\nexit 1\n"
+        )
         @test_throws ErrorException Journalier._writecron("0 8 * * * backup\n")
       end
     end
@@ -85,8 +88,10 @@ end
         write(executable, "#!/bin/sh\nexit 0\n")
         chmod(executable, 0o755)
         write(crontab, "#!/bin/sh\nprintf 'no crontab for reader\\n' >&2\nexit 1\n")
+        write(crontab, "#!/bin/sh\nprintf 'no crontab for reader\\n' >&2\nexit 1\n")
         chmod(crontab, 0o755)
         @test Journalier._readcron() == ""
+        write(crontab, "#!/bin/sh\nprintf 'crontab: no crontab for reader\\n' >&2\nexit 1\n")
         write(crontab, "#!/bin/sh\nprintf 'crontab: no crontab for reader\\n' >&2\nexit 1\n")
         @test Journalier._readcron() == ""
 
@@ -99,9 +104,10 @@ end
 #!/bin/sh
 if [ "\$1" = "-l" ]; then
   printf '%s\\n' '$diagnostic' >&2
+  printf '%s\\n' '$diagnostic' >&2
   exit $exitcode
 fi
-while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > "\$JOURNALIER_TEST_WRITE"
+while IFS= read -r line || [ -n "\$line" ]; do printf '%s\\n' "\$line"; done > "\$JOURNALIER_TEST_WRITE"
 """
             )
             @test_throws ErrorException Journalier._readcron()
@@ -109,7 +115,9 @@ while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > "\$J
             @test !isfile(writepath)
           end
           write(crontab, "#!/bin/sh\nprintf '0 8 * * * backup\\n'\nexit 1\n")
+          write(crontab, "#!/bin/sh\nprintf '0 8 * * * backup\\n'\nexit 1\n")
           @test_throws ErrorException Journalier._readcron()
+          write(crontab, "#!/bin/sh\nprintf '0 8 * * * backup\\n'\nexit 0\n")
           write(crontab, "#!/bin/sh\nprintf '0 8 * * * backup\\n'\nexit 0\n")
           @test Journalier._readcron() == "0 8 * * * backup\n"
         end
@@ -129,6 +137,7 @@ end
         executable,
         raw"""
 #!/bin/sh
+printf '%s\n' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 printf '%s\n' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 """
       )
