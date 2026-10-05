@@ -92,6 +92,7 @@ function _normalizecrossref(record, journalname)
   (
     doi=doi,
     title=title,
+    titlehtml=_crossreftext(record, "title"; default=nothing),
     authors=_cleanhtml(_crossrefauthors(record)),
     journal=journal,
     abstracttext=abstract,

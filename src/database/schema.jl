@@ -8,6 +8,7 @@ function initializedb(db)
     	CREATE TABLE IF NOT EXISTS papers (
     		doi TEXT PRIMARY KEY,
     		title TEXT NOT NULL,
+        title_html TEXT,
     		authors TEXT NOT NULL DEFAULT '',
     		journal TEXT NOT NULL DEFAULT '',
     		abstract TEXT,
@@ -27,6 +28,7 @@ function initializedb(db)
   expectedcolumns = Set((
     "doi",
     "title",
+    "title_html",
     "authors",
     "journal",
     "abstract",

@@ -1,6 +1,7 @@
 [![Build Status](https://github.com/phchavesmaia/Journalier.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/phchavesmaia/Journalier.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/phchavesmaia/Journalier.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/phchavesmaia/Journalier.jl)
-
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Julia 1.12+](https://img.shields.io/badge/julia-%E2%89%A5%201.12-9558B2?logo=julia&logoColor=white)]()
 
 # Journalier.jl
 
@@ -62,3 +63,5 @@ On Linux, the defaults are `~/.config/journalier/config.toml`, `~/.local/share/j
 Scheduling is opt-in. Cron output is appended to `collector.log` in the per-user state directory. Systemd captures service output in the user journal; view it with `journalctl --user -u journalier-collect.service`.
 
 Schedules retain the XDG configuration, data, and state settings used at installation. Reinstall the schedule after changing these settings. Crontab read errors abort installation instead of replacing existing jobs.
+
+This beta requires the current database schema, including the separate `title_html` column, and does not migrate older databases. Use a new database when an unsupported-schema error appears. Paper queries return plain-text and formatted titles without loading source JSON; `getrawmetadata(db, doi)` retrieves the stored source JSON explicitly. Formatted titles are prepared and cached in the reader model.

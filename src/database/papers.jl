@@ -1,5 +1,7 @@
 _optionaltext(value) = ismissing(value) ? nothing : String(value)
 
+const _PAPER_COLUMNS = "doi, title, authors, journal, abstract, url, published_at, created_at, first_seen_at, source, title_html, is_read, is_saved, journal_issn"
+
 function _paper(row)
   Paper(
     String(row.doi),
@@ -12,18 +14,19 @@ function _paper(row)
     _optionaltext(row.created_at),
     String(row.first_seen_at),
     String(row.source),
-    String(row.raw_metadata),
+    _optionaltext(row.title_html),
     Bool(row.is_read),
     Bool(row.is_saved),
     _optionaltext(row.journal_issn)
   )
 end
 
-"""Insert plain-text paper metadata or refresh it while preserving local state."""
+"""Insert paper metadata or refresh it while preserving local state."""
 function upsertpaper(
   db;
   doi,
   title,
+  titlehtml=nothing,
   authors="",
   journal="",
   journalissn=nothing,
@@ -39,10 +42,11 @@ function upsertpaper(
     db,
     """
 	INSERT INTO papers (
-		doi, title, authors, journal, journal_issn, abstract, url, published_at, created_at, source, raw_metadata
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		doi, title, title_html, authors, journal, journal_issn, abstract, url, published_at, created_at, source, raw_metadata
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(doi) DO UPDATE SET
 		title = excluded.title,
+        title_html = excluded.title_html,
 		authors = excluded.authors,
 		journal = excluded.journal,
 		journal_issn = COALESCE(excluded.journal_issn, papers.journal_issn),
@@ -53,7 +57,20 @@ function upsertpaper(
 		source = excluded.source,
 		raw_metadata = excluded.raw_metadata
 """,
-    (doi, title, authors, journal, journalissn, abstracttext, url, publishedat, createdat, source, rawmetadata)
+    (
+      doi,
+      title,
+      titlehtml,
+      authors,
+      journal,
+      journalissn,
+      abstracttext,
+      url,
+      publishedat,
+      createdat,
+      source,
+      rawmetadata
+    )
   )
   getpaper(db, doi)
 end
@@ -81,7 +98,7 @@ function getpapers(db; journal=nothing, saved=nothing, query=nothing, firstseena
     push!(params, firstseenafter)
   end
 
-  sql = "SELECT * FROM papers"
+  sql = "SELECT $_PAPER_COLUMNS FROM papers"
   isempty(conditions) || (sql *= " WHERE " * join(conditions, " AND "))
   sql *= " ORDER BY created_at DESC, first_seen_at DESC, title COLLATE NOCASE ASC"
   if limit !== nothing
@@ -94,8 +111,16 @@ end
 
 """Return one paper by DOI, or `nothing` when it is not in the database."""
 function getpaper(db, doi)
-  for row in DBInterface.execute(db, "SELECT * FROM papers WHERE doi = ?", (doi,))
+  for row in DBInterface.execute(db, "SELECT $_PAPER_COLUMNS FROM papers WHERE doi = ?", (doi,))
     return _paper(row)
+  end
+  nothing
+end
+
+"""Return stored source JSON by DOI, or `nothing` when the paper is unknown."""
+function getrawmetadata(db, doi)
+  for row in DBInterface.execute(db, "SELECT raw_metadata FROM papers WHERE doi = ?", (doi,))
+    return String(row.raw_metadata)
   end
   nothing
 end

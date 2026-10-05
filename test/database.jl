@@ -64,6 +64,7 @@ end
         db;
         doi=normalized.doi,
         title=normalized.title,
+        titlehtml=normalized.titlehtml,
         authors=normalized.authors,
         journal=normalized.journal,
         abstracttext=normalized.abstracttext,
@@ -142,6 +143,44 @@ end
   end
 end
 
+@testset "Source metadata lookup" begin
+  mktempdir() do dir
+    path = joinpath(dir, "papers.db")
+    db = initializedb(path)
+    metadata = JSON.json(Dict("title" => ["Unrelated source title"], "payload" => repeat("x", 100_000)))
+    try
+      upsertpaper(
+        db;
+        doi="10.1234/source",
+        title="A formatted title",
+        titlehtml="A <i>formatted</i> title",
+        rawmetadata=metadata
+      )
+      paper = only(getpapers(db))
+      @test !hasproperty(paper, :raw_metadata)
+      @test paper.title_html == "A <i>formatted</i> title"
+      @test getrawmetadata(db, paper.doi) == metadata
+      @test getrawmetadata(db, "10.1234/unknown") === nothing
+      model = Journalier.ReaderModel(db)
+      @test model.titles[paper.doi].segments == [("A ", false), ("formatted", true), (" title", false)]
+      @test !hasproperty(model.titles[paper.doi], :rawmetadata)
+      @test Base.summarysize(model) < sizeof(metadata)
+      second = upsertpaper(db; doi=paper.doi, title="Plain replacement", rawmetadata="{}")
+      @test second.title_html === nothing
+      @test getrawmetadata(db, paper.doi) == "{}"
+    finally
+      close(db)
+    end
+    db = initializedb(path)
+    try
+      @test getpaper(db, "10.1234/source").title == "Plain replacement"
+      @test getrawmetadata(db, "10.1234/source") == "{}"
+    finally
+      close(db)
+    end
+  end
+end
+
 @testset "Unsupported database schema" begin
   mktempdir() do dir
     path = joinpath(dir, "unsupported.db")
@@ -156,5 +195,12 @@ end
     finally
       close(db)
     end
+  end
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    Journalier.DBInterface.execute(db, "ALTER TABLE papers DROP COLUMN title_html")
+    @test_throws ArgumentError initializedb(db)
+  finally
+    close(db)
   end
 end

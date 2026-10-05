@@ -15,6 +15,7 @@
   paper = Journalier._normalizecrossref(record, "Fallback Journal")
   @test paper.doi == "10.1234/abc"
   @test paper.title == "Housing and Prices"
+  @test paper.titlehtml == "Housing <i>and</i> Prices"
   @test paper.authors == "Ada Lovelace; The Research Society"
   @test paper.journal == "Journal of Economics"
   @test paper.abstracttext == "Housing costs & supply."
@@ -75,6 +76,8 @@ end
 
         paper = only(getpapers(db))
         @test paper.journal_issn == journal.issn
+        @test paper.title_html == "First title"
+        @test JSON.parse(getrawmetadata(db, paper.doi))["title"] == ["First title"]
         model = Journalier.ReaderModel(db)
         Journalier._selectjournal!(model, findfirst(candidate -> candidate.id == journal.id, model.journals) + 1)
         @test only(model.papers).doi == paper.doi
@@ -103,6 +106,7 @@ end
         @test secondsummary == (journal=journal.name, fetched=2, inserted=0, updated=1, skipped=1)
         paper = only(getpapers(db))
         @test paper.title == "Updated title"
+        @test paper.title_html == "Updated title"
         @test paper.first_seen_at == firstseen
         @test paper.created_at == "2026-01-03 04:05:06"
         @test paper.is_read

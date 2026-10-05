@@ -22,6 +22,7 @@ function collectjournal(
       db;
       doi=paper.doi,
       title=paper.title,
+      titlehtml=paper.titlehtml,
       authors=paper.authors,
       journal=paper.journal,
       journalissn=journal.issn,

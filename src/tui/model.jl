@@ -1,6 +1,7 @@
 Base.@kwdef mutable struct ReaderModel <: Tachikoma.Model
   db = nothing
   papers::Vector{Paper} = Paper[]
+  titles::Dict{String,PreparedTitle} = Dict{String,PreparedTitle}()
   journals::Vector{Journal} = Journal[]
   journalcounts::Dict{String,Int} = Dict{String,Int}()
   papercount::Int = 0
@@ -58,6 +59,8 @@ function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalid=no
   model.papers =
     selectedjournal === nothing ? visiblepapers :
     filter(paper -> _matchesjournal(paper, selectedjournal), visiblepapers)
+  model.titles =
+    Dict(paper.doi => _preparedtitle(paper, get(model.titles, paper.doi, nothing)) for paper in model.papers)
   if preservepaper !== nothing
     found = findfirst(paper -> paper.doi == preservepaper, model.papers)
     found === nothing || (model.paperindex = found)

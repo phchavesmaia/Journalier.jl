@@ -1,3 +1,4 @@
+include("tui/titles.jl")
 include("tui/model.jl")
 include("tui/input.jl")
 include("tui/view.jl")

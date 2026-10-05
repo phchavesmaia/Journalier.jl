@@ -1,3 +1,62 @@
+@testset "Prepared reader titles" begin
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    doi = "10.1234/formatted"
+    title = "A café & B"
+    metadata = JSON.json(Dict("title" => ["A <i>café</i> &amp; B"]))
+    upsertpaper(db; doi, title, titlehtml="A <i>café</i> &amp; B", rawmetadata=metadata)
+    upsertpaper(db; doi="10.1234/plain", title="x < y & z", rawmetadata="invalid JSON")
+    model = Journalier.ReaderModel(db)
+    segments = model.titles[doi].segments
+    @test segments == [("A ", false), ("café", true), (" & B", false)]
+    @test model.titles["10.1234/plain"].segments == [("x < y & z", false)]
+
+    for (width, height) in ((100, 30), (120, 36))
+      backend = Tachikoma.TestBackend(width, height)
+      frame = Tachikoma.Frame(
+        backend.buf,
+        Tachikoma.Rect(1, 1, width, height),
+        Tachikoma.GraphicsRegion[],
+        Tachikoma.PixelSnapshot[]
+      )
+      Tachikoma.view(model, frame)
+      @test Tachikoma.find_text(backend, title) !== nothing
+      @test any(
+        Tachikoma.char_at(backend, x, y) == 'é' && Tachikoma.style_at(backend, x, y).italic for y in 1:height for
+        x in 1:width
+      )
+      @test model.titles[doi].segments === segments
+    end
+
+    toggleread(db, doi)
+    Journalier._refreshreader!(model)
+    @test model.titles[doi].segments === segments
+    upsertpaper(db; doi, title, titlehtml="A <i>café</i> &amp; B", rawmetadata="changed source JSON")
+    Journalier._refreshreader!(model)
+    @test model.titles[doi].segments === segments
+    upsertpaper(db; doi, title, titlehtml="<em>A café</em> &amp; B", rawmetadata=metadata)
+    Journalier._refreshreader!(model)
+    @test model.titles[doi].segments !== segments
+    @test model.titles[doi].segments == [("A café", true), (" & B", false)]
+
+    upsertpaper(db; doi="10.1234/plain", title="Changed <literal> &amp; text", rawmetadata="invalid JSON")
+    Journalier._refreshreader!(model)
+    @test join(first.(model.titles["10.1234/plain"].segments)) == "Changed <literal> &amp; text"
+    model.search = "café"
+    Journalier._refreshreader!(model)
+    @test Set(keys(model.titles)) == Set([doi])
+    model.search = "no matching title"
+    Journalier._refreshreader!(model)
+    @test isempty(model.titles)
+    model.search = ""
+    Journalier._refreshreader!(model)
+    @test length(model.titles) == length(model.papers) == 2
+    @test model.titles[doi].segments == [("A café", true), (" & B", false)]
+  finally
+    close(db)
+  end
+end
+
 @testset "Reader model and view" begin
   mktempdir() do dir
     db = initializedb(joinpath(dir, "papers.db"))
@@ -13,6 +72,7 @@
         journalissn="0094-1190",
         abstracttext="A short abstract for the first paper.",
         url="https://doi.org/10.1234/first",
+        titlehtml="First\n                    <i>Sample</i> Paper",
         rawmetadata=JSON.json(Dict("title" => ["First\n                    <i>Sample</i> Paper"]))
       )
       upsertpaper(

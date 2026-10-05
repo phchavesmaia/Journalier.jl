@@ -24,47 +24,8 @@ function _wraptext(text, width)
   lines
 end
 
-function _pushinline!(segments, text, italic)
-  segment = replace(_decodehtml(text), r"\s+" => " ")
-  isempty(segment) && return
-  if !isempty(segments) && endswith(last(segments)[1], " ") && startswith(segment, " ")
-    segment = lstrip(segment)
-  end
-  isempty(segment) || push!(segments, (segment, italic))
-end
-
-function _inlinehtmlsegments(text)
-  segments = Tuple{String,Bool}[]
-  italiclevel = 0
-  cursor = firstindex(text)
-  for tag in eachmatch(r"<[^>]*>", text)
-    start = tag.offset
-    if cursor < start
-      _pushinline!(segments, text[cursor:prevind(text, start)], italiclevel > 0)
-    end
-    normalizedtag = lowercase(tag.match)
-    if occursin(r"^<\s*(?:i|em)\b", normalizedtag)
-      italiclevel += 1
-    elseif occursin(r"^<\s*(?:/|\\)\s*(?:i|em)\s*>$", normalizedtag)
-      italiclevel = max(0, italiclevel - 1)
-    end
-    cursor = nextind(text, start, length(tag.match))
-  end
-  cursor <= lastindex(text) && _pushinline!(segments, text[cursor:lastindex(text)], italiclevel > 0)
-  segments
-end
-
-function _rawpapertitle(paper::Paper)
-  plaintitle = replace(paper.title, "&" => "&amp;", "<" => "&lt;", ">" => "&gt;")
-  try
-    _crossreftext(JSON.parse(paper.raw_metadata), "title"; default=plaintitle)
-  catch
-    plaintitle
-  end
-end
-
-function _renderinline!(buf, x, y, text, area; color=:primary, bold=false)
-  for (segment, italic) in _inlinehtmlsegments(text)
+function _renderinline!(buf, x, y, segments, area; color=:primary, bold=false)
+  for (segment, italic) in segments
     set_string!(buf, x, y, segment, tstyle(color; bold, italic), area)
     x += textwidth(segment)
   end
@@ -129,7 +90,7 @@ function _renderpapers(model::ReaderModel, area, buf)
       buf,
       area.x + textwidth(prefix),
       y,
-      _rawpapertitle(paper),
+      model.titles[paper.doi].segments,
       area;
       color=selected ? :accent : :primary,
       bold=selected
@@ -145,7 +106,7 @@ function _renderdetails(model::ReaderModel, area, buf)
   paper === nothing &&
     return set_string!(buf, area.x, area.y, "Select a paper to read its details.", tstyle(:text_dim), area)
   y = area.y
-  _renderinline!(buf, area.x, y, _rawpapertitle(paper), area; color=:primary, bold=true)
+  _renderinline!(buf, area.x, y, model.titles[paper.doi].segments, area; color=:primary, bold=true)
   y += 1
   set_string!(buf, area.x, y, isempty(paper.authors) ? "Authors unavailable" : paper.authors, tstyle(:text_dim), area)
   y += 1

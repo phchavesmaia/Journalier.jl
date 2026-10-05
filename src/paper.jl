@@ -9,7 +9,7 @@ struct Paper
   created_at::Union{Nothing,String}
   first_seen_at::String
   source::String
-  raw_metadata::String
+  title_html::Union{Nothing,String}
   is_read::Bool
   is_saved::Bool
   journal_issn::Union{Nothing,String}
