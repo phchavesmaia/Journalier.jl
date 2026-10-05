@@ -1,0 +1,75 @@
+name: CI
+on:
+  push:
+    branches:
+      - main
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  # Skip intermediate builds: always.
+  # Cancel intermediate builds: only if it is a pull request build.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+jobs:
+  test:
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.version == 'pre' }}
+    timeout-minutes: 60
+    permissions: # needed to allow julia-actions/cache to proactively delete old caches that it has created
+      actions: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.11'
+          - '1.12'
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        include:
+          - version: 'pre'
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v3
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-processcoverage@v1
+        if: matrix.version == '1.12' 
+      - uses: codecov/codecov-action@v7
+        if: matrix.version == '1.12'
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+  app-install:
+    name: Clean app installation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      JULIA_DEPOT_PATH: ${{ runner.temp }}/journalier-app-depot
+      JULIA_LOAD_PATH: '@:@stdlib'
+      JULIA_NUM_PRECOMPILE_TASKS: '2'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1.12'
+      - name: Install app into a fresh depot
+        run: julia --startup-file=no -e 'using Pkg; Pkg.Registry.add("General"); Pkg.Apps.add(path=pwd())'
+      - name: Run installed command outside the checkout
+        working-directory: ${{ runner.temp }}
+        shell: bash
+        run: |
+          output=$("$JULIA_DEPOT_PATH/bin/journalier" help)
+          printf '%s\n' "$output"
+          [[ "$output" == *"Usage: journalier"* ]]
