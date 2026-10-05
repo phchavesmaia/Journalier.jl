@@ -2,7 +2,7 @@
 [![Coverage](https://codecov.io/gh/phchavesmaia/Journalier.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/phchavesmaia/Journalier.jl)
 
 
-# Journalier
+# Journalier.jl
 
 Journalier collects recent economics papers from Crossref and provides a terminal reader for tracking new, unread, and saved papers.
 
