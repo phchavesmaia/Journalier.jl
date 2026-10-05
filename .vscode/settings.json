@@ -1,0 +1,5 @@
+{
+    "[julia]": {
+        "editor.defaultFormatter": "0h7z.vscode-julia-format"
+    }
+}
