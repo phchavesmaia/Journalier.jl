@@ -65,3 +65,5 @@ Scheduling is opt-in. Cron output is appended to `collector.log` in the per-user
 Schedules retain the XDG configuration, data, and state settings used at installation. Reinstall the schedule after changing these settings. Crontab read errors abort installation instead of replacing existing jobs.
 
 This beta requires the current database schema, including the separate `title_html` column, and does not migrate older databases. Use a new database when an unsupported-schema error appears. Paper queries return plain-text and formatted titles without loading source JSON; `getrawmetadata(db, doi)` retrieves the stored source JSON explicitly. Formatted titles are prepared and cached in the reader model.
+
+Package precompilation exercises database queries, reader rendering, and keyboard interactions using synthetic papers in an in-memory database and a headless display. This reduces first-use compilation latency without accessing user data, making network requests, or opening a terminal.

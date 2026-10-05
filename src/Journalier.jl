@@ -4,6 +4,7 @@ using DBInterface
 using Dates
 using HTTP
 using JSON
+using PrecompileTools: @setup_workload, @compile_workload
 using SQLite
 using Tachikoma
 using TOML
@@ -48,4 +49,6 @@ export Paper,
   configpath,
   databasepath,
   runui
+
+include("precompile.jl")
 end
