@@ -1,0 +1,18 @@
+name = "Journalier"
+uuid = "067964a0-596a-4cf7-ba3c-b3397f9c88be"
+version = "0.1.0"
+authors = ["phcm-desktop <phchavesmaia@gmail.com>"]
+
+[deps]
+DBInterface = "a10d1c49-ce27-4219-8d33-6db1a4562965"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+SQLite = "0aa819cd-b072-5ff4-a722-6bc24af294d9"
+Tachikoma = "468859d6-42d8-48b7-8ad9-1d312e0e3b0a"
+
+[compat]
+DBInterface = "2.7.0"
+HTTP = "2.8.0"
+JSON = "1.10.0"
+SQLite = "1.9.0"
+Tachikoma = "2.7.0"
