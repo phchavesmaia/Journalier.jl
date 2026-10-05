@@ -53,9 +53,9 @@ end
           raw"""
 #!/bin/sh
 if [ "$1" = "-l" ]; then
-  /bin/cat "$JOURNALIER_TEST_CRONTAB"
+  while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done < "$JOURNALIER_TEST_CRONTAB"
 else
-  /bin/cat > "$JOURNALIER_TEST_CRONTAB"
+  while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > "$JOURNALIER_TEST_CRONTAB"
 fi
 """
         )
@@ -65,7 +65,7 @@ fi
           @test read(cronpath, String) == "0 8 * * * backup\n"
           @test Journalier.main(["schedule", "remove"]) == 0
         end
-        write(crontab, "#!/bin/sh\n/bin/cat > /dev/null\nexit 1\n")
+        write(crontab, "#!/bin/sh\nwhile IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > /dev/null\nexit 1\n")
         @test_throws ErrorException Journalier._writecron("0 8 * * * backup\n")
       end
     end
@@ -84,10 +84,10 @@ end
         executable = joinpath(dir, "journalier")
         write(executable, "#!/bin/sh\nexit 0\n")
         chmod(executable, 0o755)
-        write(crontab, "#!/bin/sh\n/bin/printf 'no crontab for reader\\n' >&2\nexit 1\n")
+        write(crontab, "#!/bin/sh\nprintf 'no crontab for reader\\n' >&2\nexit 1\n")
         chmod(crontab, 0o755)
         @test Journalier._readcron() == ""
-        write(crontab, "#!/bin/sh\n/bin/printf 'crontab: no crontab for reader\\n' >&2\nexit 1\n")
+        write(crontab, "#!/bin/sh\nprintf 'crontab: no crontab for reader\\n' >&2\nexit 1\n")
         @test Journalier._readcron() == ""
 
         writepath = joinpath(dir, "unexpected-write")
@@ -98,19 +98,19 @@ end
               """
 #!/bin/sh
 if [ "\$1" = "-l" ]; then
-  /bin/printf '%s\\n' '$diagnostic' >&2
+  printf '%s\\n' '$diagnostic' >&2
   exit $exitcode
 fi
-/bin/cat > "\$JOURNALIER_TEST_WRITE"
+while IFS= read -r line || [ -n "$line" ]; do printf '%s\n' "$line"; done > "\$JOURNALIER_TEST_WRITE"
 """
             )
             @test_throws ErrorException Journalier._readcron()
             @test_throws ErrorException Journalier.main(["schedule", "install"])
             @test !isfile(writepath)
           end
-          write(crontab, "#!/bin/sh\n/bin/printf '0 8 * * * backup\\n'\nexit 1\n")
+          write(crontab, "#!/bin/sh\nprintf '0 8 * * * backup\\n'\nexit 1\n")
           @test_throws ErrorException Journalier._readcron()
-          write(crontab, "#!/bin/sh\n/bin/printf '0 8 * * * backup\\n'\nexit 0\n")
+          write(crontab, "#!/bin/sh\nprintf '0 8 * * * backup\\n'\nexit 0\n")
           @test Journalier._readcron() == "0 8 * * * backup\n"
         end
       end
@@ -129,7 +129,7 @@ end
         executable,
         raw"""
 #!/bin/sh
-/bin/printf '%s\n' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
+printf '%s\n' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
 """
       )
       chmod(executable, 0o755)
