@@ -11,10 +11,10 @@ function initializedb(db)
     		authors TEXT NOT NULL DEFAULT '',
     		journal TEXT NOT NULL DEFAULT '',
     		abstract TEXT,
-		url TEXT,
-		published_at TEXT,
-		created_at TEXT,
-		first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        url TEXT,
+        published_at TEXT,
+        created_at TEXT,
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     		source TEXT NOT NULL DEFAULT 'crossref',
     		raw_metadata TEXT NOT NULL DEFAULT '{}',
     		is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
@@ -115,7 +115,7 @@ function upsertpaper(
 		source = excluded.source,
 		raw_metadata = excluded.raw_metadata
 """,
-	(doi, title, authors, journal, abstracttext, url, publishedat, createdat, source, rawmetadata)
+    (doi, title, authors, journal, abstracttext, url, publishedat, createdat, source, rawmetadata)
   )
   getpaper(db, doi)
 end

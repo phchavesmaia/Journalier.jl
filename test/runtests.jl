@@ -163,7 +163,7 @@ using Test
         "x  Remove selected journal",
         "↑/↓, j/k  Move selection",
         "?  Show this help",
-        "q  Quit",
+        "q  Quit"
       )
       helpresults = [Tachikoma.find_text(helpbackend, command) for command in helpcommands]
       helprows = [position.y for position in filter(position -> position !== nothing, helpresults)]
@@ -183,11 +183,7 @@ end
     configroot = joinpath(dir, "config")
     dataroot = joinpath(dir, "data")
     stateroot = joinpath(dir, "state")
-    withenv(
-      "XDG_CONFIG_HOME" => configroot,
-      "XDG_DATA_HOME" => dataroot,
-      "XDG_STATE_HOME" => stateroot
-    ) do
+    withenv("XDG_CONFIG_HOME" => configroot, "XDG_DATA_HOME" => dataroot, "XDG_STATE_HOME" => stateroot) do
       @test configdir() == joinpath(configroot, "journalier")
       @test datadir() == joinpath(dataroot, "journalier")
       @test statedir() == joinpath(stateroot, "journalier")
@@ -219,6 +215,111 @@ end
       end
     end
   end
+end
+
+@testset "Configuration" begin
+  mktempdir() do dir
+    path = joinpath(dir, "nested", "config.toml")
+    config = loadconfig(; path)
+    @test config.mailto == ""
+    @test config.recordsperjournal == 100
+    @test isfile(path)
+    @test loadconfig(; path) == config
+
+    write(path, "mailto = \" reader@example.org \"\nrecords_per_journal = 250\n")
+    config = loadconfig(; path)
+    @test config.mailto == "reader@example.org"
+    @test config.recordsperjournal == 250
+    withenv("CROSSREF_MAILTO" => "environment@example.org") do
+      @test Journalier._crossrefmailto(AppConfig()) == "environment@example.org"
+      @test Journalier._crossrefmailto(config) == "reader@example.org"
+    end
+
+    write(path, "records_per_journal = 0\n")
+    @test_throws ArgumentError loadconfig(; path)
+    write(path, "unknown = true\n")
+    @test_throws ArgumentError loadconfig(; path)
+    write(path, "mailto = 123\n")
+    @test_throws ArgumentError loadconfig(; path)
+  end
+
+  mktempdir() do dir
+    withenv("XDG_CONFIG_HOME" => joinpath(dir, "config")) do
+      input = IOBuffer("reader@example.org\n")
+      output = IOBuffer()
+      config = Journalier._ensureconfig(; input, output, prompt=true)
+      @test config.mailto == "reader@example.org"
+      @test occursin("Crossref contact email", String(take!(output)))
+      @test loadconfig().mailto == "reader@example.org"
+    end
+  end
+end
+
+@testset "CLI initialization" begin
+  mktempdir() do dir
+    withenv(
+      "XDG_CONFIG_HOME" => joinpath(dir, "config"),
+      "XDG_DATA_HOME" => joinpath(dir, "data"),
+      "XDG_STATE_HOME" => joinpath(dir, "state")
+    ) do
+      fetchcalls = Ref(0)
+      fetcher = (db; kwargs...) -> (fetchcalls[] += 1; [(fetched=3,)])
+      journalcount = Journalier._withappdb(; fetcher) do db, config
+        length(getjournals(db))
+      end
+      @test journalcount == 6
+      @test fetchcalls[] == 1
+      @test Journalier.main(["init"]) == 0
+      @test isfile(configpath())
+      @test isfile(databasepath())
+      @test fetchcalls[] == 1
+      db = initializedb(databasepath())
+      try
+        @test length(getjournals(db)) == 6
+      finally
+        close(db)
+      end
+    end
+  end
+
+  mktempdir() do dir
+    db = initializedb(joinpath(dir, "papers.db"))
+    try
+      output = IOBuffer()
+      fetcher = (db; kwargs...) -> error("offline")
+      @test Journalier._collectinitial(db, AppConfig(), fetcher; io=output) === nothing
+      message = String(take!(output))
+      @test occursin("Initial Crossref collection failed: offline", message)
+      @test occursin("journalier collect", message)
+    finally
+      close(db)
+    end
+  end
+end
+
+@testset "Scheduler helpers" begin
+  @test Journalier._validtime("07:05") == "07:05"
+  @test_throws ArgumentError Journalier._validtime("24:00")
+  @test_throws ArgumentError Journalier._validtime("7:05")
+
+  units = Journalier._systemdunits("/path with space/journalier", "07:05")
+  @test occursin("ExecStart=\"/path with space/journalier\" collect", units.service)
+  @test occursin("OnCalendar=*-*-* 07:05:00", units.timer)
+  @test occursin("Unit=journalier-collect.service", units.timer)
+
+  cron = Journalier._cronentry("/path with space/journalier", "07:05")
+  @test startswith(cron, "5 7 * * * '")
+  @test endswith(cron, Journalier._SCHEDULER_MARKER)
+  @test occursin("journalier' collect", cron)
+
+  existing = "MAILTO=user@example.org\n0 8 * * * backup\n0 6 * * * old-job # journalier-managed\n"
+  updated = Journalier._updatedcron(existing; entry=cron)
+  @test occursin("MAILTO=user@example.org", updated)
+  @test occursin("0 8 * * * backup", updated)
+  @test !occursin("old-job", updated)
+  @test count(line -> occursin(Journalier._SCHEDULER_MARKER, line), split(updated, '\n')) == 1
+  @test Journalier._updatedcron(updated; entry=cron) == updated
+  @test Journalier._updatedcron(updated) == "MAILTO=user@example.org\n0 8 * * * backup\n"
 end
 
 @testset "Crossref normalization" begin
@@ -372,14 +473,13 @@ end
       upsertpaper(db; doi="10.1234/alpha", title="Alpha", createdat="2026-01-03 00:00:00")
       upsertpaper(db; doi="10.1234/beta", title="Beta", createdat="2026-01-03 00:00:00")
       upsertpaper(db; doi="10.1234/older", title="Older created", createdat="2026-01-02 00:00:00")
-      Journalier.DBInterface.execute(db, "UPDATE papers SET first_seen_at = ? WHERE doi != ?", ("2026-01-02 00:00:00", "10.1234/first-seen"))
+      Journalier.DBInterface.execute(
+        db,
+        "UPDATE papers SET first_seen_at = ? WHERE doi != ?",
+        ("2026-01-02 00:00:00", "10.1234/first-seen")
+      )
 
-      @test [paper.doi for paper in getpapers(db)] == [
-        "10.1234/first-seen",
-        "10.1234/alpha",
-        "10.1234/beta",
-        "10.1234/older"
-      ]
+      @test [paper.doi for paper in getpapers(db)] == ["10.1234/first-seen", "10.1234/alpha", "10.1234/beta", "10.1234/older"]
     finally
       close(db)
     end

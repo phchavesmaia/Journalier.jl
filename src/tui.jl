@@ -52,7 +52,8 @@ function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalname=
     selectedjournal = model.journals[model.journalindex - 1].name
   end
   model.journals = getjournals(model.db)
-  selectedindex = selectedjournal === nothing ? nothing : findfirst(journal -> journal.name == selectedjournal, model.journals)
+  selectedindex =
+    selectedjournal === nothing ? nothing : findfirst(journal -> journal.name == selectedjournal, model.journals)
   model.journalindex = selectedindex === nothing ? 1 : selectedindex + 1
   saved = model.period == :saved ? true : nothing
   firstseenafter = _periodstart(model.period)
@@ -63,7 +64,8 @@ function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalname=
     model.journalcounts[journalkey] = get(model.journalcounts, journalkey, 0) + 1
   end
   selectedkey = selectedjournal === nothing ? nothing : _journalkey(selectedjournal)
-  model.papers = selectedkey === nothing ? visiblepapers : filter(paper -> _journalkey(paper.journal) == selectedkey, visiblepapers)
+  model.papers =
+    selectedkey === nothing ? visiblepapers : filter(paper -> _journalkey(paper.journal) == selectedkey, visiblepapers)
   if preservepaper !== nothing
     found = findfirst(paper -> paper.doi == preservepaper, model.papers)
     found === nothing || (model.paperindex = found)
@@ -331,13 +333,27 @@ function _renderheader(model::ReaderModel, area, buf)
   x = area.x
   for (period, label) in labels
     text = period == model.period ? "[$label]" : " $label "
-    set_string!(buf, x, area.y, text, tstyle(period == model.period ? :accent : :text_dim, bold=period == model.period), area)
+    set_string!(
+      buf,
+      x,
+      area.y,
+      text,
+      tstyle(period == model.period ? :accent : :text_dim, bold=period == model.period),
+      area
+    )
     x += textwidth(text) + 1
   end
 end
 
 function _renderjournals(model::ReaderModel, area, buf)
-  set_string!(buf, area.x, area.y, " All  $(sum(values(model.journalcounts); init=0))", tstyle(model.journalindex == 1 ? :accent : :primary, bold=model.journalindex == 1), area)
+  set_string!(
+    buf,
+    area.x,
+    area.y,
+    " All  $(sum(values(model.journalcounts); init=0))",
+    tstyle(model.journalindex == 1 ? :accent : :primary, bold=model.journalindex == 1),
+    area
+  )
   for (offset, journal) in enumerate(model.journals)
     y = area.y + offset
     y <= area.y + area.height - 1 || break
@@ -367,7 +383,15 @@ function _renderpapers(model::ReaderModel, area, buf)
     paper.is_saved && push!(states, "SAVED")
     prefix = (selected ? "▸ " : "  ") * join(states, " · ") * (isempty(states) ? "" : "  ")
     set_string!(buf, area.x, y, prefix, tstyle(selected ? :accent : :primary, bold=selected), area)
-    _renderinline!(buf, area.x + textwidth(prefix), y, _rawpapertitle(paper), area; color=selected ? :accent : :primary, bold=selected)
+    _renderinline!(
+      buf,
+      area.x + textwidth(prefix),
+      y,
+      _rawpapertitle(paper),
+      area;
+      color=selected ? :accent : :primary,
+      bold=selected
+    )
     y + 1 <= area.y + area.height - 1 || continue
     metadata = filter(part -> !isempty(part), (paper.authors, paper.journal, something(paper.published_at, "")))
     set_string!(buf, area.x + 2, y + 1, join(metadata, " · "), tstyle(:text_dim), area)
@@ -376,7 +400,8 @@ end
 
 function _renderdetails(model::ReaderModel, area, buf)
   paper = _currentpaper(model)
-  paper === nothing && return set_string!(buf, area.x, area.y, "Select a paper to read its details.", tstyle(:text_dim), area)
+  paper === nothing &&
+    return set_string!(buf, area.x, area.y, "Select a paper to read its details.", tstyle(:text_dim), area)
   y = area.y
   _renderinline!(buf, area.x, y, _rawpapertitle(paper), area; color=:primary, bold=true)
   y += 1
@@ -385,7 +410,13 @@ function _renderdetails(model::ReaderModel, area, buf)
   metadata = filter(part -> !isempty(part), (paper.journal, something(paper.published_at, "")))
   set_string!(buf, area.x, y, join(metadata, " · "), tstyle(:accent), area)
   y += 1
-  status = join(filter(part -> !isempty(part), (_isnew(paper) ? "NEW" : "", paper.is_read ? "Read" : "Unread", paper.is_saved ? "Saved" : "Not saved")), " · ")
+  status = join(
+    filter(
+      part -> !isempty(part),
+      (_isnew(paper) ? "NEW" : "", paper.is_read ? "Read" : "Unread", paper.is_saved ? "Saved" : "Not saved")
+    ),
+    " · "
+  )
   set_string!(buf, area.x, y, status, tstyle(:text_dim), area)
   y += 1
   y <= area.y + area.height - 1 || return
@@ -417,10 +448,14 @@ function _renderdialog(model::ReaderModel, area, buf)
       "x  Remove selected journal",
       "↑/↓, j/k  Move selection",
       "?  Show this help",
-      "q  Quit",
+      "q  Quit"
     ]
   elseif model.mode == :removejournal
-    ["Remove $(model.journals[model.journalindex - 1].name)?", "Stored papers will be kept.", "Press y to remove or Esc to cancel."]
+    [
+      "Remove $(model.journals[model.journalindex - 1].name)?",
+      "Stored papers will be kept.",
+      "Press y to remove or Esc to cancel."
+    ]
   elseif model.mode == :journalname
     ["Journal name:", model.formname * "▏", "Enter to continue · Esc to cancel", model.message]
   else

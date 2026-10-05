@@ -6,6 +6,7 @@ using HTTP
 using JSON
 using SQLite
 using Tachikoma
+using TOML
 
 import Tachikoma: should_quit, update!, view
 
@@ -14,10 +15,13 @@ include("journal.jl")
 include("database.jl")
 include("collector.jl")
 include("paths.jl")
+include("config.jl")
+include("scheduler.jl")
 include("tui.jl")
 include("cli.jl")
 
 export Paper,
+  AppConfig,
   Journal,
   INITIAL_JOURNALS,
   initializedb,
@@ -37,6 +41,7 @@ export Paper,
   configdir,
   datadir,
   statedir,
+  loadconfig,
   configpath,
   databasepath,
   runui,

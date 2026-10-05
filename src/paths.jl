@@ -22,13 +22,8 @@ function _platformappdir(xdgvariable, unixfallback, macfallback, windowsvariable
 end
 
 """Return Journalier's per-user configuration directory."""
-configdir() = _platformappdir(
-  "XDG_CONFIG_HOME",
-  (".config",),
-  ("Library", "Preferences"),
-  "APPDATA",
-  ("AppData", "Roaming")
-)
+configdir() =
+  _platformappdir("XDG_CONFIG_HOME", (".config",), ("Library", "Preferences"), "APPDATA", ("AppData", "Roaming"))
 
 """Return Journalier's per-user data directory."""
 datadir() = _platformappdir(
