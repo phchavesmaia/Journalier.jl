@@ -4,16 +4,23 @@
 
 # Journalier.jl
 
-Journalier collects recent economics papers from Crossref and provides a terminal reader for tracking new, unread, and saved papers.
+Tired of feeling behind your readings? Journalier aims to help you keep on trach with what's up in the academic world. Select your favourite journals and it collects recent papers from Crossref, providing a terminal reader for tracking new, unread, and saved papers.
 
-Papers are shown by newest Crossref registration date first, with local discovery time and title breaking ties. Publication dates may refer to online-first publication; the reader does not infer an in-press status from those dates. Today and This Week continue to filter by local discovery time.
+## Usage
+After installing Journalier, run it by typing 
+```
+journalier
+```
+in your terminal to get see what happened recently in your selected journals
 
-## Requirements
+![Example of usage](./example.png)
 
-Journalier requires Julia 1.11 or later. Crossref collection needs an internet connection.
+## Installation
 
-## Install the `journalier` command
+### Requirements
+Journalier requires Julia 1.12 or later. Crossref collection needs an internet connection.
 
+### The `journalier` command
 Julia's package manager can install a package app from a checkout. In the Julia REPL, run:
 
 ```julia
