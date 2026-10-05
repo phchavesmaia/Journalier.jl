@@ -8,11 +8,11 @@
 Tired of feeling behind on your reading? Journalier helps you keep up with what's happening in the academic world. Select your favorite journals, and Journalier collects their latest papers from Crossref, providing a terminal-based reader for keeping track of new, unread, and saved papers.
 
 ## Usage
-After installing Journalier, run it by typing 
-```
+After installing Journalier, run it by typing
+```text
 journalier
 ```
-in your terminal to get see what happened recently in your selected journals
+in your terminal to see what's new in your selected journals.
 
 ![Example of usage](./example.png)
 
