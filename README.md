@@ -2,6 +2,8 @@
 
 Journalier collects recent economics papers from Crossref and provides a terminal reader for tracking new, unread, and saved papers.
 
+Papers are shown by newest Crossref registration date first, with local discovery time and title breaking ties. Publication dates may refer to online-first publication; the reader does not infer an in-press status from those dates. Today and This Week continue to filter by local discovery time.
+
 ## Requirements
 
 Journalier requires Julia 1.11 or later. Crossref collection needs an internet connection.

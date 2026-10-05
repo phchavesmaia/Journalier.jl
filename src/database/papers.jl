@@ -58,7 +58,7 @@ function upsertpaper(
   getpaper(db, doi)
 end
 
-"""Return filtered papers by first-seen time, Crossref creation date, then title."""
+"""Return filtered papers by Crossref creation date, first-seen time, then title."""
 function getpapers(db; journal=nothing, saved=nothing, query=nothing, firstseenafter=nothing, limit=nothing)
   conditions = String[]
   params = Any[]
@@ -83,7 +83,7 @@ function getpapers(db; journal=nothing, saved=nothing, query=nothing, firstseena
 
   sql = "SELECT * FROM papers"
   isempty(conditions) || (sql *= " WHERE " * join(conditions, " AND "))
-  sql *= " ORDER BY first_seen_at DESC, created_at DESC, title COLLATE NOCASE ASC"
+  sql *= " ORDER BY created_at DESC, first_seen_at DESC, title COLLATE NOCASE ASC"
   if limit !== nothing
     limit > 0 || throw(ArgumentError("limit must be positive"))
     sql *= " LIMIT ?"

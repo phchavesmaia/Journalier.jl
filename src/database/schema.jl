@@ -53,9 +53,10 @@ function initializedb(db)
     """
   )
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_journal_idx ON papers (journal)")
+  DBInterface.execute(db, "DROP INDEX IF EXISTS papers_order_idx")
   DBInterface.execute(
     db,
-    "CREATE INDEX IF NOT EXISTS papers_order_idx ON papers (first_seen_at DESC, created_at DESC, title COLLATE NOCASE)"
+    "CREATE INDEX IF NOT EXISTS papers_created_order_idx ON papers (created_at DESC, first_seen_at DESC, title COLLATE NOCASE)"
   )
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_first_seen_idx ON papers (first_seen_at)")
   if !existingjournalstable

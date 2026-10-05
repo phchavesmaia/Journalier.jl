@@ -20,7 +20,18 @@
         ("2026-01-02 00:00:00", "10.1234/first-seen")
       )
 
-      @test [paper.doi for paper in getpapers(db)] == ["10.1234/first-seen", "10.1234/alpha", "10.1234/beta", "10.1234/older"]
+      expected = ["10.1234/alpha", "10.1234/beta", "10.1234/older", "10.1234/first-seen"]
+      @test [paper.doi for paper in getpapers(db)] == expected
+      @test only(getpapers(db; limit=1)).doi == "10.1234/alpha"
+      @test [paper.doi for paper in Journalier.ReaderModel(db).papers] == expected
+      upsertpaper(db; doi="10.1234/unknown-date", title="Unknown Crossref date")
+      Journalier.DBInterface.execute(
+        db,
+        "UPDATE papers SET first_seen_at = ? WHERE doi = ?",
+        ("2026-01-04 00:00:00", "10.1234/unknown-date")
+      )
+      @test last(getpapers(db)).doi == "10.1234/unknown-date"
+      @test [paper.doi for paper in getpapers(db; firstseenafter="2026-01-03 00:00:00")] == ["10.1234/first-seen", "10.1234/unknown-date"]
     finally
       close(db)
     end
