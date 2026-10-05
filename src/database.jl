@@ -1,5 +1,5 @@
 """Create the initial papers table and indexes in an open SQLite database."""
-function initdb(db)
+function initializedb(db)
   DBInterface.execute(
     db,
     """
@@ -25,15 +25,34 @@ function initdb(db)
 end
 
 """Open `path`, initialize its schema, and return the open SQLite connection."""
-function initdb(path::AbstractString)
+function initializedb(path::AbstractString)
   db = SQLite.DB(path)
   try
-    initdb(db)
+    initializedb(db)
   catch
     close(db)
     rethrow()
   end
   db
+end
+
+_optionaltext(value) = ismissing(value) ? nothing : String(value)
+
+function _paper(row)
+  Paper(
+    String(row.doi),
+    String(row.title),
+    String(row.authors),
+    String(row.journal),
+    _optionaltext(getproperty(row, Symbol("abstract"))),
+    _optionaltext(row.url),
+    _optionaltext(row.published_at),
+    String(row.first_seen_at),
+    String(row.source),
+    String(row.raw_metadata),
+    Bool(row.is_read),
+    Bool(row.is_saved)
+  )
 end
 
 """Insert a paper or refresh its metadata while preserving local state."""
@@ -97,13 +116,13 @@ function getpapers(db; journal=nothing, saved=nothing, query=nothing, limit=noth
     sql *= " LIMIT ?"
     push!(params, limit)
   end
-  collect(DBInterface.execute(db, sql, Tuple(params)))
+  Paper[_paper(row) for row in DBInterface.execute(db, sql, Tuple(params))]
 end
 
 """Return one paper by DOI, or `nothing` when it is not in the database."""
 function getpaper(db, doi)
   rows = collect(DBInterface.execute(db, "SELECT * FROM papers WHERE doi = ?", (doi,)))
-  isempty(rows) ? nothing : only(rows)
+  isempty(rows) ? nothing : _paper(only(rows))
 end
 
 """Return journal names and paper counts, ordered by journal name."""
@@ -128,12 +147,12 @@ end
 function toggleread(db, doi)
   DBInterface.execute(db, "UPDATE papers SET is_read = 1 - is_read WHERE doi = ?", (doi,))
   paper = getpaper(db, doi)
-  paper === nothing ? nothing : paper.is_read == 1
+  paper === nothing ? nothing : paper.is_read
 end
 
 """Toggle and return a paper's saved state, or `nothing` if the DOI is unknown."""
 function togglesaved(db, doi)
   DBInterface.execute(db, "UPDATE papers SET is_saved = 1 - is_saved WHERE doi = ?", (doi,))
   paper = getpaper(db, doi)
-  paper === nothing ? nothing : paper.is_saved == 1
+  paper === nothing ? nothing : paper.is_saved
 end

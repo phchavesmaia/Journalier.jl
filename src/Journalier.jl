@@ -1,10 +1,15 @@
 module Journalier
 
 using DBInterface
+using HTTP
+using JSON
 using SQLite
 
+include("paper.jl")
+include("journal.jl")
 include("database.jl")
+include("collector.jl")
 
-export initialize_database, upsert_paper, get_papers, get_paper, get_journals, mark_read, toggle_read, toggle_saved
+export Paper, Journal, DEFAULT_JOURNALS, initializedb, upsertpaper, getpapers, getpaper, getjournals, markread, toggleread, togglesaved, collectjournal, collectpapers
 
 end
