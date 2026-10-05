@@ -70,13 +70,7 @@ end
       try
         journal = only(filter(candidate -> candidate.issn == "0094-1190", getjournals(db)))
         baseurl = "http://127.0.0.1:$(HTTP.port(server))"
-        firstsummary = collectjournal(
-          db,
-          journal;
-          recordsperjournal=2,
-          mailto="reader+test@example.org",
-          baseurl
-        )
+        firstsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
         @test firstsummary == (journal=journal.name, fetched=2, inserted=1, updated=0, skipped=1)
 
         paper = only(getpapers(db))
@@ -87,13 +81,7 @@ end
         updateditem = copy(item)
         updateditem["title"] = ["Updated title"]
         items[] = Any[updateditem, missingdoi]
-        secondsummary = collectjournal(
-          db,
-          journal;
-          recordsperjournal=2,
-          mailto="reader+test@example.org",
-          baseurl
-        )
+        secondsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
         @test secondsummary == (journal=journal.name, fetched=2, inserted=0, updated=1, skipped=1)
         paper = only(getpapers(db))
         @test paper.title == "Updated title"

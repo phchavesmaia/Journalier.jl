@@ -109,12 +109,12 @@ end
 
 """Fetch and store recent Crossref works for one journal."""
 function collectjournal(
-    db,
-    journal::Journal;
-    recordsperjournal=100,
-    mailto=get(ENV, "CROSSREF_MAILTO", ""),
-    baseurl="https://api.crossref.org"
-  )
+  db,
+  journal::Journal;
+  recordsperjournal=100,
+  mailto=get(ENV, "CROSSREF_MAILTO", ""),
+  baseurl="https://api.crossref.org"
+)
   contact = isempty(strip(mailto)) ? nothing : strip(mailto)
   items = _fetchcrossref(journal.issn; recordsperjournal, mailto=contact, baseurl)
   inserted = 0
@@ -146,12 +146,12 @@ end
 
 """Fetch and store recent Crossref works for each supplied journal."""
 function collectpapers(
-    db,
-    journals=getjournals(db);
-    recordsperjournal=100,
-    mailto=get(ENV, "CROSSREF_MAILTO", ""),
-    baseurl="https://api.crossref.org"
-  )
+  db,
+  journals=getjournals(db);
+  recordsperjournal=100,
+  mailto=get(ENV, "CROSSREF_MAILTO", ""),
+  baseurl="https://api.crossref.org"
+)
   summaries = NamedTuple[]
   for journal in journals
     push!(summaries, collectjournal(db, journal; recordsperjournal, mailto, baseurl))
