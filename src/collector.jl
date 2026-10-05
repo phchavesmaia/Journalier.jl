@@ -1,6 +1,6 @@
-function _crossrefurl(issn)
+function _crossrefurl(issn, baseurl)
   occursin(r"^[0-9Xx-]+$", issn) || throw(ArgumentError("invalid ISSN: $issn"))
-  "https://api.crossref.org/journals/$issn/works"
+  "$(rstrip(baseurl, '/'))/journals/$issn/works"
 end
 
 function _crossrefquery(recordsperjournal; mailto=nothing)
@@ -94,8 +94,8 @@ function _normalizecrossref(record, journalname)
 end
 
 """Fetch Crossref work records for one ISSN."""
-function _fetchcrossref(issn; recordsperjournal=100, mailto=nothing)
-  url = _crossrefurl(issn)
+function _fetchcrossref(issn; recordsperjournal, mailto=nothing, baseurl)
+  url = _crossrefurl(issn, baseurl)
   useragent = mailto === nothing ? "Journalier/0.1.0" : "Journalier/0.1.0 (mailto:$mailto)"
   response = HTTP.get(url, ["User-Agent" => useragent]; query=_crossrefquery(recordsperjournal; mailto))
   response.status == 200 || error("Crossref request for ISSN $issn returned HTTP $(response.status)")
@@ -108,9 +108,15 @@ function _fetchcrossref(issn; recordsperjournal=100, mailto=nothing)
 end
 
 """Fetch and store recent Crossref works for one journal."""
-function collectjournal(db, journal::Journal; recordsperjournal=100, mailto=get(ENV, "CROSSREF_MAILTO", ""))
+function collectjournal(
+    db,
+    journal::Journal;
+    recordsperjournal=100,
+    mailto=get(ENV, "CROSSREF_MAILTO", ""),
+    baseurl="https://api.crossref.org"
+  )
   contact = isempty(strip(mailto)) ? nothing : strip(mailto)
-  items = _fetchcrossref(journal.issn; recordsperjournal, mailto=contact)
+  items = _fetchcrossref(journal.issn; recordsperjournal, mailto=contact, baseurl)
   inserted = 0
   updated = 0
   skipped = 0
@@ -139,10 +145,16 @@ function collectjournal(db, journal::Journal; recordsperjournal=100, mailto=get(
 end
 
 """Fetch and store recent Crossref works for each supplied journal."""
-function collectpapers(db, journals=getjournals(db); recordsperjournal=100, mailto=get(ENV, "CROSSREF_MAILTO", ""))
+function collectpapers(
+    db,
+    journals=getjournals(db);
+    recordsperjournal=100,
+    mailto=get(ENV, "CROSSREF_MAILTO", ""),
+    baseurl="https://api.crossref.org"
+  )
   summaries = NamedTuple[]
   for journal in journals
-    push!(summaries, collectjournal(db, journal; recordsperjournal, mailto))
+    push!(summaries, collectjournal(db, journal; recordsperjournal, mailto, baseurl))
   end
   summaries
 end
