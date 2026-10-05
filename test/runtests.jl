@@ -18,7 +18,8 @@ using Test
         authors="Ada Lovelace",
         journal="Journal of Urban Economics",
         abstracttext="A short abstract for the first paper.",
-        url="https://doi.org/10.1234/first"
+        url="https://doi.org/10.1234/first",
+        rawmetadata=JSON.json(Dict("title" => ["First\n                    <i>Sample</i> Paper"]))
       )
       upsertpaper(
         db;
@@ -131,6 +132,10 @@ using Test
       @test Tachikoma.find_text(renderbackend, "First Sample Paper") !== nothing
       @test Tachikoma.find_text(renderbackend, "A short abstract") !== nothing
       @test Tachikoma.find_text(renderbackend, "NEW") !== nothing
+      @test any(
+        Tachikoma.char_at(renderbackend, x, y) == 'S' && Tachikoma.style_at(renderbackend, x, y).italic for
+        y in 1:renderbackend.height for x in 1:renderbackend.width
+      )
       @test Journalier._journalabbreviation(Journal("12345678", "New Journal of Economics", "1234-5678")) == "NJE"
 
       Tachikoma.update!(model, Tachikoma.KeyEvent('?'))
@@ -219,10 +224,10 @@ end
 @testset "Crossref normalization" begin
   record = Dict(
     "DOI" => "10.1234/AbC",
-    "title" => ["  Housing and Prices  "],
+    "title" => ["  Housing <i>and</i> Prices  "],
     "author" => [Dict("given" => "Ada", "family" => "Lovelace"), Dict("name" => "The Research Society")],
     "container-title" => ["Journal of Economics"],
-    "abstract" => "<jats:p>Housing&nbsp;costs &amp; supply.</jats:p>",
+    "abstract" => "<jats:p>Housing&nbsp;<i>costs</i> &amp; supply.</jats:p>",
     "URL" => "https://doi.org/10.1234/AbC",
     "created" => Dict("date-time" => "2024-03-05T11:12:13Z", "date-parts" => [[2024, 3, 5]]),
     "published-online" => Dict("date-parts" => [[2024, 3, 4]]),
@@ -238,6 +243,7 @@ end
   @test paper.abstracttext == "Housing costs & supply."
   @test paper.publishedat == "2024-03-04"
   @test paper.createdat == "2024-03-05 11:12:13"
+  @test Journalier._cleanhtml("<i>Inline</i> markup <\\i>") == "Inline markup"
   @test Journalier._crossrefcreated(Dict("created" => Dict("date-parts" => [[2024, 3, 5]]))) == "2024-03-05"
   @test JSON.parse(paper.rawmetadata)["DOI"] == "10.1234/AbC"
 
@@ -356,10 +362,11 @@ end
       Journalier.DBInterface.execute(
         db,
         "INSERT INTO papers (doi, title, first_seen_at) VALUES (?, ?, ?)",
-        ("10.1234/first-seen", "First seen first", "2026-01-03 00:00:00")
+        ("10.1234/first-seen", "First <i>seen</i> first", "2026-01-03 00:00:00")
       )
       initializedb(db)
       @test getpaper(db, "10.1234/first-seen").created_at === nothing
+      @test getpaper(db, "10.1234/first-seen").title == "First seen first"
 
       upsertpaper(db; doi="10.1234/first-seen", title="First seen first", createdat="2025-01-01 00:00:00")
       upsertpaper(db; doi="10.1234/alpha", title="Alpha", createdat="2026-01-03 00:00:00")

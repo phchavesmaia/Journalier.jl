@@ -80,15 +80,26 @@ function _crossrefdate(record)
   nothing
 end
 
-function _cleanabstract(value)
-  value === nothing && return nothing
-  text = replace(string(value), r"<[^>]*>" => " ")
+"""Decode common HTML character entities."""
+function _decodehtml(value)
+  text = string(value)
   for (entity, character) in
       (("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""), ("&apos;", "'"), ("&#39;", "'"), ("&nbsp;", " "))
     text = replace(text, entity => character)
   end
-  text = replace(text, "&amp;" => "&")
-  text = join(split(strip(text)), " ")
+  replace(text, "&amp;" => "&")
+end
+
+"""Remove inline HTML markup, decode common entities, and normalize whitespace."""
+function _cleanhtml(value)
+  text = replace(string(value), r"<[^>]*>" => " ")
+  text = _decodehtml(text)
+  join(split(strip(text)), " ")
+end
+
+function _cleanabstract(value)
+  value === nothing && return nothing
+  text = _cleanhtml(value)
   isempty(text) ? nothing : text
 end
 
@@ -97,8 +108,8 @@ function _normalizecrossref(record, journalname)
   record isa AbstractDict || throw(ArgumentError("Crossref work record must be an object"))
   doi = lowercase(strip(string(get(record, "DOI", ""))))
   isempty(doi) && return nothing
-  title = _crossreftext(record, "title")
-  journal = _crossreftext(record, "container-title"; default=journalname)
+  title = _cleanhtml(_crossreftext(record, "title"))
+  journal = _cleanhtml(_crossreftext(record, "container-title"; default=journalname))
   abstract = _cleanabstract(get(record, "abstract", nothing))
   url = _crossreftext(record, "URL"; default=nothing)
   (

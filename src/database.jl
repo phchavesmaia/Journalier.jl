@@ -69,10 +69,10 @@ _optionaltext(value) = ismissing(value) ? nothing : String(value)
 function _paper(row)
   Paper(
     String(row.doi),
-    String(row.title),
-    String(row.authors),
-    String(row.journal),
-    _optionaltext(getproperty(row, Symbol("abstract"))),
+    _cleanhtml(String(row.title)),
+    _cleanhtml(String(row.authors)),
+    _cleanhtml(String(row.journal)),
+    _cleanabstract(_optionaltext(getproperty(row, Symbol("abstract")))),
     _optionaltext(row.url),
     _optionaltext(row.published_at),
     _optionaltext(row.created_at),

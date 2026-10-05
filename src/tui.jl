@@ -281,6 +281,51 @@ function _wraptext(text, width)
   lines
 end
 
+function _pushinline!(segments, text, italic)
+  segment = replace(_decodehtml(text), r"\s+" => " ")
+  isempty(segment) && return
+  if !isempty(segments) && endswith(last(segments)[1], " ") && startswith(segment, " ")
+    segment = lstrip(segment)
+  end
+  isempty(segment) || push!(segments, (segment, italic))
+end
+
+function _inlinehtmlsegments(text)
+  segments = Tuple{String,Bool}[]
+  italiclevel = 0
+  cursor = firstindex(text)
+  for tag in eachmatch(r"<[^>]*>", text)
+    start = tag.offset
+    if cursor < start
+      _pushinline!(segments, text[cursor:prevind(text, start)], italiclevel > 0)
+    end
+    normalizedtag = lowercase(tag.match)
+    if occursin(r"^<\s*(?:i|em)\b", normalizedtag)
+      italiclevel += 1
+    elseif occursin(r"^<\s*(?:/|\\)\s*(?:i|em)\s*>$", normalizedtag)
+      italiclevel = max(0, italiclevel - 1)
+    end
+    cursor = nextind(text, start, length(tag.match))
+  end
+  cursor <= lastindex(text) && _pushinline!(segments, text[cursor:lastindex(text)], italiclevel > 0)
+  segments
+end
+
+function _rawpapertitle(paper::Paper)
+  try
+    _crossreftext(JSON.parse(paper.raw_metadata), "title"; default=paper.title)
+  catch
+    paper.title
+  end
+end
+
+function _renderinline!(buf, x, y, text, area; color=:primary, bold=false)
+  for (segment, italic) in _inlinehtmlsegments(text)
+    set_string!(buf, x, y, segment, tstyle(color; bold, italic), area)
+    x += textwidth(segment)
+  end
+end
+
 function _renderheader(model::ReaderModel, area, buf)
   labels = ((:today, "Today"), (:week, "This Week"), (:all, "All"), (:saved, "Saved"))
   x = area.x
@@ -292,7 +337,7 @@ function _renderheader(model::ReaderModel, area, buf)
 end
 
 function _renderjournals(model::ReaderModel, area, buf)
-  set_string!(buf, area.x, area.y, "▸ All  $(sum(values(model.journalcounts); init=0))", tstyle(model.journalindex == 1 ? :accent : :primary, bold=model.journalindex == 1), area)
+  set_string!(buf, area.x, area.y, " All  $(sum(values(model.journalcounts); init=0))", tstyle(model.journalindex == 1 ? :accent : :primary, bold=model.journalindex == 1), area)
   for (offset, journal) in enumerate(model.journals)
     y = area.y + offset
     y <= area.y + area.height - 1 || break
@@ -320,8 +365,9 @@ function _renderpapers(model::ReaderModel, area, buf)
     _isnew(paper) && push!(states, "NEW")
     paper.is_read || push!(states, "UNREAD")
     paper.is_saved && push!(states, "SAVED")
-    title = (selected ? "▸ " : "  ") * join(states, " · ") * (isempty(states) ? "" : "  ") * paper.title
-    set_string!(buf, area.x, y, title, tstyle(selected ? :accent : :primary, bold=selected), area)
+    prefix = (selected ? "▸ " : "  ") * join(states, " · ") * (isempty(states) ? "" : "  ")
+    set_string!(buf, area.x, y, prefix, tstyle(selected ? :accent : :primary, bold=selected), area)
+    _renderinline!(buf, area.x + textwidth(prefix), y, _rawpapertitle(paper), area; color=selected ? :accent : :primary, bold=selected)
     y + 1 <= area.y + area.height - 1 || continue
     metadata = filter(part -> !isempty(part), (paper.authors, paper.journal, something(paper.published_at, "")))
     set_string!(buf, area.x + 2, y + 1, join(metadata, " · "), tstyle(:text_dim), area)
@@ -332,7 +378,7 @@ function _renderdetails(model::ReaderModel, area, buf)
   paper = _currentpaper(model)
   paper === nothing && return set_string!(buf, area.x, area.y, "Select a paper to read its details.", tstyle(:text_dim), area)
   y = area.y
-  set_string!(buf, area.x, y, paper.title, tstyle(:primary, bold=true), area)
+  _renderinline!(buf, area.x, y, _rawpapertitle(paper), area; color=:primary, bold=true)
   y += 1
   set_string!(buf, area.x, y, isempty(paper.authors) ? "Authors unavailable" : paper.authors, tstyle(:text_dim), area)
   y += 1
