@@ -21,11 +21,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        version: ['1.11', '1.12']
+        version: ['1.11', '1.12', 'pre']
         os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - version: 'pre'
-            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v3
