@@ -45,6 +45,10 @@ records_per_journal = 100
 
 Scheduling is opt-in. Cron output is appended to `collector.log` in the per-user state directory. Systemd captures service output in the user journal; view it with `journalctl --user -u journalier-collect.service`.
 
+Schedules retain the XDG configuration, data, and state settings used at installation. Reinstall the schedule after changing these settings. Crontab read errors abort installation instead of replacing existing jobs.
+
+This beta version requires the current database schema and does not migrate older databases. An unsupported schema produces an explicit error; use a new database to initialize this version. Paper text is stored as plain text, and journal filtering uses the collection ISSN.
+
 ## Tests
 
 Run the package test suite with `julia --project=. -e 'using Pkg; Pkg.test()'`.

@@ -14,6 +14,7 @@ function initializedb(db)
         url TEXT,
         published_at TEXT,
         created_at TEXT,
+        journal_issn TEXT,
         first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     		source TEXT NOT NULL DEFAULT 'crossref',
     		raw_metadata TEXT NOT NULL DEFAULT '{}',
@@ -23,7 +24,24 @@ function initializedb(db)
     """
   )
   papercolumns = Set(String(row.name) for row in DBInterface.execute(db, "PRAGMA table_info(papers)"))
-  "created_at" in papercolumns || DBInterface.execute(db, "ALTER TABLE papers ADD COLUMN created_at TEXT")
+  expectedcolumns = Set((
+    "doi",
+    "title",
+    "authors",
+    "journal",
+    "abstract",
+    "url",
+    "published_at",
+    "created_at",
+    "journal_issn",
+    "first_seen_at",
+    "source",
+    "raw_metadata",
+    "is_read",
+    "is_saved"
+  ))
+  papercolumns == expectedcolumns ||
+    throw(ArgumentError("unsupported papers schema; create a new database for this beta version"))
   DBInterface.execute(
     db,
     """
@@ -69,10 +87,10 @@ _optionaltext(value) = ismissing(value) ? nothing : String(value)
 function _paper(row)
   Paper(
     String(row.doi),
-    _cleanhtml(String(row.title)),
-    _cleanhtml(String(row.authors)),
-    _cleanhtml(String(row.journal)),
-    _cleanabstract(_optionaltext(getproperty(row, Symbol("abstract")))),
+    String(row.title),
+    String(row.authors),
+    String(row.journal),
+    _optionaltext(getproperty(row, Symbol("abstract"))),
     _optionaltext(row.url),
     _optionaltext(row.published_at),
     _optionaltext(row.created_at),
@@ -80,17 +98,19 @@ function _paper(row)
     String(row.source),
     String(row.raw_metadata),
     Bool(row.is_read),
-    Bool(row.is_saved)
+    Bool(row.is_saved),
+    _optionaltext(row.journal_issn)
   )
 end
 
-"""Insert a paper or refresh its metadata while preserving local state."""
+"""Insert plain-text paper metadata or refresh it while preserving local state."""
 function upsertpaper(
   db;
   doi,
   title,
   authors="",
   journal="",
+  journalissn=nothing,
   abstracttext=nothing,
   url=nothing,
   publishedat=nothing,
@@ -98,16 +118,18 @@ function upsertpaper(
   source="crossref",
   rawmetadata="{}"
 )
+  journalissn = journalissn === nothing ? nothing : _normalizeissn(journalissn)
   DBInterface.execute(
     db,
     """
 	INSERT INTO papers (
-		doi, title, authors, journal, abstract, url, published_at, created_at, source, raw_metadata
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		doi, title, authors, journal, journal_issn, abstract, url, published_at, created_at, source, raw_metadata
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(doi) DO UPDATE SET
 		title = excluded.title,
 		authors = excluded.authors,
 		journal = excluded.journal,
+		journal_issn = COALESCE(excluded.journal_issn, papers.journal_issn),
 		abstract = excluded.abstract,
 		url = excluded.url,
 		published_at = excluded.published_at,
@@ -115,7 +137,7 @@ function upsertpaper(
 		source = excluded.source,
 		raw_metadata = excluded.raw_metadata
 """,
-    (doi, title, authors, journal, abstracttext, url, publishedat, createdat, source, rawmetadata)
+    (doi, title, authors, journal, journalissn, abstracttext, url, publishedat, createdat, source, rawmetadata)
   )
   getpaper(db, doi)
 end

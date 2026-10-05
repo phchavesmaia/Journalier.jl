@@ -5,6 +5,20 @@ using Dates
 using Tachikoma
 using Test
 
+@testset "Package entry point" begin
+  project = dirname(@__DIR__)
+  julia = Base.julia_cmd()
+  loadpath = join(("@", "@stdlib"), Sys.iswindows() ? ';' : ':')
+  readchild = cmd -> read(addenv(cmd, "JULIA_LOAD_PATH" => loadpath), String)
+  output = readchild(`$julia --startup-file=no --project=$project -e 'using Journalier; print("imported")' help`)
+  @test output == "imported"
+  appoutput = readchild(`$julia --startup-file=no --project=$project -e 'import Journalier: main' help`)
+  @test occursin("Usage: journalier", appoutput)
+  launcheroutput =
+    readchild(`$julia --startup-file=no --project=$project $(joinpath(project, "bin", "journalier")) help`)
+  @test occursin("Usage: journalier", launcheroutput)
+end
+
 @testset "Reader model and view" begin
   mktempdir() do dir
     db = initializedb(joinpath(dir, "papers.db"))
@@ -17,6 +31,7 @@ using Test
         title="First Sample Paper",
         authors="Ada Lovelace",
         journal="Journal of Urban Economics",
+        journalissn="0094-1190",
         abstracttext="A short abstract for the first paper.",
         url="https://doi.org/10.1234/first",
         rawmetadata=JSON.json(Dict("title" => ["First\n                    <i>Sample</i> Paper"]))
@@ -27,6 +42,7 @@ using Test
         title="Second Older Paper",
         authors="Grace Hopper",
         journal="The Quarterly Journal of Economics",
+        journalissn="0033-5533",
         abstracttext="An older paper abstract."
       )
       Journalier.DBInterface.execute(db, "UPDATE papers SET first_seen_at = ? WHERE doi = ?", (recent, "10.1234/first"))
@@ -36,7 +52,7 @@ using Test
       model = Journalier.ReaderModel(db)
       @test length(model.papers) == 2
       @test model.journalindex == 1
-      @test model.journalcounts["quarterly journal of economics"] == 1
+      @test model.journalcounts["0033-5533"] == 1
       @test Journalier._isnew(model.papers[1])
       @test !Journalier._isnew(model.papers[2])
       @test !Tachikoma.should_quit(model)
@@ -64,7 +80,7 @@ using Test
       targetqje = findfirst(journal -> journal.name == "Quarterly Journal of Economics", model.journals)
       Journalier._selectjournal!(model, targetqje + 1)
       @test only(model.papers).doi == "10.1234/second"
-      @test model.journalcounts["quarterly journal of economics"] == 1
+      @test model.journalcounts["0033-5533"] == 1
       Journalier._selectjournal!(model, 1)
 
       Tachikoma.update!(model, Tachikoma.KeyEvent('/'))
@@ -308,7 +324,7 @@ end
   @test occursin("Unit=journalier-collect.service", units.timer)
 
   cron = Journalier._cronentry("/path with space/journalier", "07:05")
-  @test startswith(cron, "5 7 * * * '")
+  @test startswith(cron, "5 7 * * * XDG_CONFIG_HOME=")
   @test endswith(cron, Journalier._SCHEDULER_MARKER)
   @test occursin("journalier' collect", cron)
 
@@ -392,12 +408,28 @@ end
     mktempdir() do dir
       db = initializedb(joinpath(dir, "papers.db"))
       try
-        journal = only(filter(candidate -> candidate.issn == "0094-1190", getjournals(db)))
+        journal = addjournal(db, "Urban economics", "1234-5678")
         baseurl = "http://127.0.0.1:$(HTTP.port(server))"
         firstsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
         @test firstsummary == (journal=journal.name, fetched=2, inserted=1, updated=0, skipped=1)
 
         paper = only(getpapers(db))
+        @test paper.journal_issn == journal.issn
+        model = Journalier.ReaderModel(db)
+        Journalier._selectjournal!(model, findfirst(candidate -> candidate.id == journal.id, model.journals) + 1)
+        @test only(model.papers).doi == paper.doi
+        @test model.journalcounts[journal.issn] == 1
+        officialindex = findfirst(candidate -> candidate.issn == "0094-1190", model.journals)
+        Journalier._selectjournal!(model, officialindex + 1)
+        @test isempty(model.papers)
+        @test removejournal(db, journal.id)
+        journal = addjournal(db, "Economics alias", journal.issn)
+        Journalier._refreshreader!(model; journalid=journal.id)
+        @test only(model.papers).doi == paper.doi
+        duplicate = addjournal(db, journal.name, "5678-9012")
+        Journalier._refreshreader!(model)
+        @test model.journals[model.journalindex - 1].id == journal.id
+        @test removejournal(db, duplicate.id)
         @test paper.created_at == "2026-01-03 04:05:06"
         @test toggleread(db, paper.doi)
         @test togglesaved(db, paper.doi)
@@ -415,6 +447,7 @@ end
         @test paper.created_at == "2026-01-03 04:05:06"
         @test paper.is_read
         @test paper.is_saved
+        @test paper.journal_issn == journal.issn
         @test length(getpapers(db)) == 1
 
         failrequest[] = true
@@ -437,37 +470,17 @@ end
   end
 end
 
-@testset "Paper ordering and schema migration" begin
+@testset "Paper ordering" begin
   mktempdir() do dir
-    db = Journalier.SQLite.DB(joinpath(dir, "legacy.db"))
+    db = initializedb(joinpath(dir, "papers.db"))
     try
+      upsertpaper(db; doi="10.1234/first-seen", title="First seen first")
       Journalier.DBInterface.execute(
         db,
-        """
-        CREATE TABLE papers (
-          doi TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          authors TEXT NOT NULL DEFAULT '',
-          journal TEXT NOT NULL DEFAULT '',
-          abstract TEXT,
-          url TEXT,
-          published_at TEXT,
-          first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          source TEXT NOT NULL DEFAULT 'crossref',
-          raw_metadata TEXT NOT NULL DEFAULT '{}',
-          is_read INTEGER NOT NULL DEFAULT 0,
-          is_saved INTEGER NOT NULL DEFAULT 0
-        )
-        """
+        "UPDATE papers SET first_seen_at = ? WHERE doi = ?",
+        ("2026-01-03 00:00:00", "10.1234/first-seen")
       )
-      Journalier.DBInterface.execute(
-        db,
-        "INSERT INTO papers (doi, title, first_seen_at) VALUES (?, ?, ?)",
-        ("10.1234/first-seen", "First <i>seen</i> first", "2026-01-03 00:00:00")
-      )
-      initializedb(db)
       @test getpaper(db, "10.1234/first-seen").created_at === nothing
-      @test getpaper(db, "10.1234/first-seen").title == "First seen first"
 
       upsertpaper(db; doi="10.1234/first-seen", title="First seen first", createdat="2025-01-01 00:00:00")
       upsertpaper(db; doi="10.1234/alpha", title="Alpha", createdat="2026-01-03 00:00:00")
@@ -540,5 +553,231 @@ end
     finally
       close(db)
     end
+  end
+end
+
+@testset "Plain-text persistence" begin
+  mktempdir() do dir
+    path = joinpath(dir, "papers.db")
+    db = initializedb(path)
+    try
+      examples = (
+        ("When x &lt; y &gt; z", "When x < y > z"),
+        ("A &amp;lt; B", "A &lt; B"),
+        ("A &lt;i&gt;literal&lt;/i&gt;", "A <i>literal</i>")
+      )
+      for (index, (rawtext, expected)) in enumerate(examples)
+        normalized = Journalier._normalizecrossref(
+          Dict(
+            "DOI" => "10.1234/text-$index",
+            "title" => [rawtext],
+            "abstract" => rawtext,
+            "author" => [Dict("name" => rawtext)]
+          ),
+          "Example Journal"
+        )
+        paper = upsertpaper(db; normalized...)
+        @test paper.title == expected
+        @test paper.abstract_text == expected
+        @test paper.authors == expected
+        @test getpaper(db, paper.doi).title == expected
+        segments = Journalier._inlinehtmlsegments(Journalier._rawpapertitle(paper))
+        @test join(first.(segments)) == expected
+      end
+      paper = upsertpaper(db; doi="10.1234/plain", title="When x < y > z", abstracttext="A &lt; B")
+      @test paper.title == "When x < y > z"
+      @test paper.abstract_text == "A &lt; B"
+      @test join(first.(Journalier._inlinehtmlsegments(Journalier._rawpapertitle(paper)))) == paper.title
+      initializedb(db)
+      @test getpaper(db, "10.1234/text-2").title == "A &lt; B"
+    finally
+      close(db)
+    end
+    db = initializedb(path)
+    try
+      @test getpaper(db, "10.1234/text-1").title == "When x < y > z"
+      @test getpaper(db, "10.1234/text-2").abstract_text == "A &lt; B"
+    finally
+      close(db)
+    end
+  end
+end
+
+@testset "Schedule removal" begin
+  if Sys.isunix()
+    mktempdir() do dir
+      withenv("XDG_CONFIG_HOME" => joinpath(dir, "config"), "PATH" => dir) do
+        @test Journalier._removesystemd() === false
+        @test Journalier.main(["schedule", "remove"]) == 0
+        systemctl = joinpath(dir, "systemctl")
+        write(systemctl, "#!/bin/sh\nexit 0\n")
+        chmod(systemctl, 0o755)
+        unitdir = Journalier._systemdunitdir()
+        mkpath(unitdir)
+        servicepath = joinpath(unitdir, "journalier-collect.service")
+        timerpath = joinpath(unitdir, "journalier-collect.timer")
+        write(servicepath, "service")
+        write(timerpath, "timer")
+        @test Journalier._removesystemd() === true
+        @test !isfile(servicepath)
+        @test !isfile(timerpath)
+        write(timerpath, "timer")
+        @test Journalier.main(["schedule", "remove"]) == 0
+        @test !isfile(timerpath)
+
+        cronpath = joinpath(dir, "crontab.txt")
+        write(cronpath, "0 8 * * * backup\n0 7 * * * collect # journalier-managed\n")
+        crontab = joinpath(dir, "crontab")
+        write(
+          crontab,
+          raw"""
+#!/bin/sh
+if [ "$1" = "-l" ]; then
+  /bin/cat "$JOURNALIER_TEST_CRONTAB"
+else
+  /bin/cat > "$JOURNALIER_TEST_CRONTAB"
+fi
+"""
+        )
+        chmod(crontab, 0o755)
+        withenv("JOURNALIER_TEST_CRONTAB" => cronpath) do
+          @test Journalier.main(["schedule", "remove"]) == 0
+          @test read(cronpath, String) == "0 8 * * * backup\n"
+          @test Journalier.main(["schedule", "remove"]) == 0
+        end
+        write(crontab, "#!/bin/sh\n/bin/cat > /dev/null\nexit 1\n")
+        @test_throws ErrorException Journalier._writecron("0 8 * * * backup\n")
+      end
+    end
+  end
+end
+
+@testset "Crontab read failures" begin
+  if Sys.isunix()
+    mktempdir() do dir
+      withenv(
+        "PATH" => dir,
+        "XDG_CONFIG_HOME" => joinpath(dir, "config"),
+        "XDG_STATE_HOME" => joinpath(dir, "state")
+      ) do
+        crontab = joinpath(dir, "crontab")
+        executable = joinpath(dir, "journalier")
+        write(executable, "#!/bin/sh\nexit 0\n")
+        chmod(executable, 0o755)
+        write(crontab, "#!/bin/sh\n/bin/printf 'no crontab for reader\\n' >&2\nexit 1\n")
+        chmod(crontab, 0o755)
+        @test Journalier._readcron() == ""
+        write(crontab, "#!/bin/sh\n/bin/printf 'crontab: no crontab for reader\\n' >&2\nexit 1\n")
+        @test Journalier._readcron() == ""
+
+        writepath = joinpath(dir, "unexpected-write")
+        withenv("JOURNALIER_TEST_WRITE" => writepath) do
+          for (diagnostic, exitcode) in (("permission denied", 1), ("", 2), ("no crontab for reader", 2))
+            write(
+              crontab,
+              """
+#!/bin/sh
+if [ "\$1" = "-l" ]; then
+  /bin/printf '%s\\n' '$diagnostic' >&2
+  exit $exitcode
+fi
+/bin/cat > "\$JOURNALIER_TEST_WRITE"
+"""
+            )
+            @test_throws ErrorException Journalier._readcron()
+            @test_throws ErrorException Journalier.main(["schedule", "install"])
+            @test !isfile(writepath)
+          end
+          write(crontab, "#!/bin/sh\n/bin/printf '0 8 * * * backup\\n'\nexit 1\n")
+          @test_throws ErrorException Journalier._readcron()
+          write(crontab, "#!/bin/sh\n/bin/printf '0 8 * * * backup\\n'\nexit 0\n")
+          @test Journalier._readcron() == "0 8 * * * backup\n"
+        end
+      end
+    end
+  end
+end
+
+@testset "Scheduled XDG environment" begin
+  if Sys.isunix()
+    mktempdir() do dir
+      configroot = joinpath(dir, "config '\"%\$")
+      dataroot = joinpath(dir, "data with spaces")
+      stateroot = joinpath(dir, "state")
+      executable = joinpath(dir, "journalier")
+      write(
+        executable,
+        raw"""
+#!/bin/sh
+/bin/printf '%s\n' "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME"
+"""
+      )
+      chmod(executable, 0o755)
+      service, entry, logpath =
+        withenv("XDG_CONFIG_HOME" => configroot, "XDG_DATA_HOME" => dataroot, "XDG_STATE_HOME" => stateroot) do
+          mkpath(statedir())
+          (
+            Journalier._systemdunits(executable, "07:05").service,
+            Journalier._cronentry(executable, "07:05"),
+            joinpath(statedir(), "collector.log")
+          )
+        end
+      @test occursin("Environment=\"XDG_DATA_HOME=$dataroot\"", service)
+      @test occursin("Environment=\"XDG_STATE_HOME=$stateroot\"", service)
+      @test occursin("config '\\\"%%\$", service)
+      # Cron removes the escaping of percent characters before invoking its shell.
+      command = replace(split(entry; limit=6)[6], "\\%" => "%")
+      withenv(
+        "XDG_CONFIG_HOME" => "/wrong/config",
+        "XDG_DATA_HOME" => "/wrong/data",
+        "XDG_STATE_HOME" => "/wrong/state"
+      ) do
+        run(`/bin/sh -c $command`)
+      end
+      @test read(logpath, String) == join((configroot, dataroot, stateroot), '\n') * "\n"
+      withenv("XDG_CONFIG_HOME" => nothing, "XDG_DATA_HOME" => nothing, "XDG_STATE_HOME" => nothing) do
+        units = Journalier._systemdunits(executable, "07:05")
+        @test occursin("Environment=\"XDG_CONFIG_HOME=\"", units.service)
+        @test occursin("XDG_CONFIG_HOME=''", Journalier._cronentry(executable, "07:05"))
+      end
+      withenv("XDG_DATA_HOME" => "bad\npath") do
+        @test_throws ArgumentError Journalier._systemdunits(executable, "07:05")
+        @test_throws ArgumentError Journalier._cronentry(executable, "07:05")
+      end
+    end
+  end
+end
+
+@testset "Unsupported database schema" begin
+  mktempdir() do dir
+    path = joinpath(dir, "unsupported.db")
+    db = Journalier.SQLite.DB(path)
+    try
+      Journalier.DBInterface.execute(db, "CREATE TABLE papers (doi TEXT PRIMARY KEY, title TEXT NOT NULL)")
+      Journalier.DBInterface.execute(db, "INSERT INTO papers VALUES ('10.1234/existing', 'Keep this record')")
+      @test_throws ArgumentError initializedb(db)
+      counts = [row.count for row in Journalier.DBInterface.execute(db, "SELECT COUNT(*) AS count FROM papers")]
+      @test only(counts) == 1
+      @test_throws ArgumentError initializedb(path)
+    finally
+      close(db)
+    end
+  end
+end
+
+@testset "Journal identity" begin
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    upsertpaper(db; doi="10.1234/unassigned", title="Unassigned paper", journal="Journal of Urban Economics")
+    model = Journalier.ReaderModel(db)
+    @test model.papercount == 1
+    @test length(model.papers) == 1
+    journalindex = findfirst(journal -> journal.issn == "0094-1190", model.journals)
+    Journalier._selectjournal!(model, journalindex + 1)
+    @test isempty(model.papers)
+    @test isempty(model.journalcounts)
+    @test model.papercount == 1
+  finally
+    close(db)
   end
 end

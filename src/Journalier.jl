@@ -44,6 +44,5 @@ export Paper,
   loadconfig,
   configpath,
   databasepath,
-  runui,
-  main
+  runui
 end

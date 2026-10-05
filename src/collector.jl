@@ -115,7 +115,7 @@ function _normalizecrossref(record, journalname)
   (
     doi=doi,
     title=title,
-    authors=_crossrefauthors(record),
+    authors=_cleanhtml(_crossrefauthors(record)),
     journal=journal,
     abstracttext=abstract,
     url=url,
@@ -165,6 +165,7 @@ function collectjournal(
       title=paper.title,
       authors=paper.authors,
       journal=paper.journal,
+      journalissn=journal.issn,
       abstracttext=paper.abstracttext,
       url=paper.url,
       publishedat=paper.publishedat,

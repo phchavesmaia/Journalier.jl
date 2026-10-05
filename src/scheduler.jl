@@ -10,14 +10,25 @@ function _systemdquote(value)
   "\"" * replace(value, "\\" => "\\\\", "\"" => "\\\"", "%" => "%%") * "\""
 end
 
+function _scheduleenvironment()
+  settings = [name => get(ENV, name, "") for name in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME")]
+  for (name, value) in settings
+    any(character -> character in ('\n', '\r', '\0'), value) &&
+      throw(ArgumentError("$name cannot contain newlines or NUL in a schedule"))
+  end
+  settings
+end
+
 function _systemdunits(executable, time)
   time = _validtime(time)
+  environment = join(["Environment=$(_systemdquote("$name=$value"))" for (name, value) in _scheduleenvironment()], "\n")
   service = """
   [Unit]
   Description=Collect recent papers with Journalier
 
   [Service]
   Type=oneshot
+  $environment
   ExecStart=$(_systemdquote(executable)) collect
   """
   timer = """
@@ -62,13 +73,24 @@ function _cronentry(executable, time)
   hour, minute = parse.(Int, split(time, ':'))
   logpath = joinpath(statedir(), "collector.log")
   quotecron(value) = "'" * replace(replace(value, "'" => "'\\''"), "%" => "\\%") * "'"
-  "$minute $hour * * * $(quotecron(executable)) collect >> $(quotecron(logpath)) 2>&1 $_SCHEDULER_MARKER"
+  environment = join(["$name=$(quotecron(value))" for (name, value) in _scheduleenvironment()], " ")
+  "$minute $hour * * * $environment $(quotecron(executable)) collect >> $(quotecron(logpath)) 2>&1 $_SCHEDULER_MARKER"
 end
 
 function _readcron()
   crontab = Sys.which("crontab")
   crontab === nothing && throw(ArgumentError("crontab is not available on this system"))
-  read(pipeline(ignorestatus(`$crontab -l`), stderr=devnull), String)
+  output = IOBuffer()
+  errors = IOBuffer()
+  command = addenv(`$crontab -l`, "LC_ALL" => "C")
+  process = run(pipeline(ignorestatus(command); stdout=output, stderr=errors))
+  content = String(take!(output))
+  diagnostic = strip(String(take!(errors)))
+  success(process) && return content
+  if process.exitcode == 1 && isempty(content) && occursin(r"^(?:crontab:\s*)?no crontab for \S+$", diagnostic)
+    return ""
+  end
+  error("could not read crontab (exit code $(process.exitcode)): $diagnostic")
 end
 
 function _updatedcron(existing; entry=nothing)
@@ -86,6 +108,7 @@ function _writecron(content)
   finally
     close(process)
   end
+  success(process) || error("crontab update failed with exit code $(process.exitcode)")
   nothing
 end
 
@@ -99,7 +122,8 @@ function _removesystemd()
   unitdir = _systemdunitdir()
   timerpath = joinpath(unitdir, "$_SCHEDULER_SERVICE.timer")
   servicepath = joinpath(unitdir, "$_SCHEDULER_SERVICE.service")
-  if isfile(timerpath) || isfile(servicepath)
+  removed = isfile(timerpath) || isfile(servicepath)
+  if removed
     systemctl = Sys.which("systemctl")
     if systemctl !== nothing
       run(pipeline(ignorestatus(`$systemctl --user disable --now $_SCHEDULER_SERVICE.timer`), stderr=devnull))
@@ -110,7 +134,7 @@ function _removesystemd()
       run(`$systemctl --user daemon-reload`)
     end
   end
-  nothing
+  removed
 end
 
 function _removecron()
@@ -124,6 +148,7 @@ end
 
 function _installschedule(time)
   time = _validtime(time)
+  _scheduleenvironment()
   executable = _scheduleexecutable()
   mkpath(statedir())
   if _systemdavailable()
@@ -131,9 +156,10 @@ function _installschedule(time)
     _writeunits(executable, time)
     println("Installed a daily systemd user timer at $time.")
   else
-    _removesystemd()
+    existing = _readcron()
     entry = _cronentry(executable, time)
-    _writecron(_updatedcron(_readcron(); entry))
+    _writecron(_updatedcron(existing; entry))
+    _removesystemd()
     println("Installed a daily cron job at $time.")
   end
   0

@@ -3,6 +3,7 @@ Base.@kwdef mutable struct ReaderModel <: Tachikoma.Model
   papers::Vector{Paper} = Paper[]
   journals::Vector{Journal} = Journal[]
   journalcounts::Dict{String,Int} = Dict{String,Int}()
+  papercount::Int = 0
   period::Symbol = :all
   journalindex::Int = 1
   paperindex::Int = 1
@@ -22,8 +23,6 @@ function ReaderModel(db)
 end
 
 should_quit(model::ReaderModel) = model.quit
-
-_journalkey(name) = replace(lowercase(strip(name)), r"^the\s+" => "")
 
 function _journalabbreviation(journal::Journal)
   all(isletter, journal.id) && return uppercase(journal.id)
@@ -46,32 +45,37 @@ function _periodstart(period; localnow=Dates.now(), utcnow=Dates.now(Dates.UTC))
   Dates.format(utcstart, dateformat"yyyy-mm-dd HH:MM:SS")
 end
 
-function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalname=nothing)
-  selectedjournal = journalname
-  if selectedjournal === nothing && 1 < model.journalindex <= length(model.journals) + 1
-    selectedjournal = model.journals[model.journalindex - 1].name
+function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalid=nothing)
+  selectedid = journalid
+  if selectedid === nothing && 1 < model.journalindex <= length(model.journals) + 1
+    selectedid = model.journals[model.journalindex - 1].id
   end
   model.journals = getjournals(model.db)
-  selectedindex =
-    selectedjournal === nothing ? nothing : findfirst(journal -> journal.name == selectedjournal, model.journals)
+  selectedindex = selectedid === nothing ? nothing : findfirst(journal -> journal.id == selectedid, model.journals)
   model.journalindex = selectedindex === nothing ? 1 : selectedindex + 1
+  selectedjournal = selectedindex === nothing ? nothing : model.journals[selectedindex]
   saved = model.period == :saved ? true : nothing
   firstseenafter = _periodstart(model.period)
   visiblepapers = getpapers(model.db; saved, query=model.search, firstseenafter)
+  model.papercount = length(visiblepapers)
   empty!(model.journalcounts)
   for paper in visiblepapers
-    journalkey = _journalkey(paper.journal)
-    model.journalcounts[journalkey] = get(model.journalcounts, journalkey, 0) + 1
+    paper.journal_issn === nothing && continue
+    model.journalcounts[paper.journal_issn] = get(model.journalcounts, paper.journal_issn, 0) + 1
   end
-  selectedkey = selectedjournal === nothing ? nothing : _journalkey(selectedjournal)
   model.papers =
-    selectedkey === nothing ? visiblepapers : filter(paper -> _journalkey(paper.journal) == selectedkey, visiblepapers)
+    selectedjournal === nothing ? visiblepapers :
+    filter(paper -> _matchesjournal(paper, selectedjournal), visiblepapers)
   if preservepaper !== nothing
     found = findfirst(paper -> paper.doi == preservepaper, model.papers)
     found === nothing || (model.paperindex = found)
   end
   model.paperindex = clamp(model.paperindex, 1, max(length(model.papers), 1))
   model
+end
+
+function _matchesjournal(paper, journal)
+  paper.journal_issn == journal.issn
 end
 
 function _setperiod!(model::ReaderModel, period)
@@ -127,7 +131,7 @@ function _addjournalkey!(model::ReaderModel, event)
         model.mode = :reader
         model.formname = ""
         model.formissn = ""
-        _refreshreader!(model; journalname=journal.name)
+        _refreshreader!(model; journalid=journal.id)
         model.message = "Added $(journal.name)."
       catch error
         model.message = sprint(showerror, error)
@@ -314,10 +318,11 @@ function _inlinehtmlsegments(text)
 end
 
 function _rawpapertitle(paper::Paper)
+  plaintitle = replace(paper.title, "&" => "&amp;", "<" => "&lt;", ">" => "&gt;")
   try
-    _crossreftext(JSON.parse(paper.raw_metadata), "title"; default=paper.title)
+    _crossreftext(JSON.parse(paper.raw_metadata), "title"; default=plaintitle)
   catch
-    paper.title
+    plaintitle
   end
 end
 
@@ -350,7 +355,7 @@ function _renderjournals(model::ReaderModel, area, buf)
     buf,
     area.x,
     area.y,
-    " All  $(sum(values(model.journalcounts); init=0))",
+    " All  $(model.papercount)",
     tstyle(model.journalindex == 1 ? :accent : :primary, bold=model.journalindex == 1),
     area
   )
@@ -358,7 +363,7 @@ function _renderjournals(model::ReaderModel, area, buf)
     y = area.y + offset
     y <= area.y + area.height - 1 || break
     marker = model.journalindex == offset + 1 ? "▸ " : "  "
-    count = get(model.journalcounts, _journalkey(journal.name), 0)
+    count = get(model.journalcounts, journal.issn, 0)
     label = "$(marker)$(_journalabbreviation(journal))  $(count)"
     set_string!(buf, area.x, y, label, tstyle(model.journalindex == offset + 1 ? :accent : :primary), area)
   end

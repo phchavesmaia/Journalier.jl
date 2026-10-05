@@ -12,4 +12,5 @@ struct Paper
   raw_metadata::String
   is_read::Bool
   is_saved::Bool
+  journal_issn::Union{Nothing,String}
 end
