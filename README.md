@@ -4,7 +4,7 @@
 
 # Journalier.jl
 
-Tired of feeling behind your readings? Journalier aims to help you keep on trach with what's up in the academic world. Select your favourite journals and it collects recent papers from Crossref, providing a terminal reader for tracking new, unread, and saved papers.
+Tired of feeling behind on your reading? Journalier helps you keep up with what's happening in the academic world. Select your favorite journals, and Journalier collects their latest papers from Crossref, providing a terminal-based reader for keeping track of new, unread, and saved papers.
 
 ## Usage
 After installing Journalier, run it by typing 
