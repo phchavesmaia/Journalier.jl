@@ -9,7 +9,7 @@ function _crossrefquery(recordsperjournal; mailto=nothing)
     "rows" => string(recordsperjournal),
     "sort" => "created",
     "order" => "desc",
-    "select" => "DOI,title,author,container-title,abstract,URL,published-online,published-print,issued"
+    "select" => "DOI,title,author,container-title,abstract,URL,created,published-online,published-print,issued"
   ]
   mailto === nothing || push!(query, "mailto" => mailto)
   query
@@ -39,6 +39,26 @@ function _crossrefauthors(record)
     isempty(name) || push!(names, name)
   end
   join(names, "; ")
+end
+
+function _crossrefcreated(record)
+  created = get(record, "created", nothing)
+  created isa AbstractDict || return nothing
+  datetime = _crossreftext(created, "date-time"; default=nothing)
+  if datetime !== nothing
+    matchresult = match(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})", datetime)
+    matchresult === nothing || return "$(matchresult.captures[1]) $(matchresult.captures[2])"
+  end
+  dateparts = get(created, "date-parts", nothing)
+  dateparts isa AbstractVector && !isempty(dateparts) || return nothing
+  parts = first(dateparts)
+  parts isa AbstractVector && !isempty(parts) || return nothing
+  values = string.(parts)
+  values[1] = lpad(values[1], 4, '0')
+  for index in 2:length(values)
+    values[index] = lpad(values[index], 2, '0')
+  end
+  join(values, "-")
 end
 
 """Return a Crossref publication date, preferring online, print, then issued."""
@@ -89,6 +109,7 @@ function _normalizecrossref(record, journalname)
     abstracttext=abstract,
     url=url,
     publishedat=_crossrefdate(record),
+    createdat=_crossrefcreated(record),
     rawmetadata=JSON.json(record)
   )
 end
@@ -136,6 +157,7 @@ function collectjournal(
       abstracttext=paper.abstracttext,
       url=paper.url,
       publishedat=paper.publishedat,
+      createdat=paper.createdat,
       source="crossref",
       rawmetadata=paper.rawmetadata
     )

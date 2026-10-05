@@ -224,6 +224,7 @@ end
     "container-title" => ["Journal of Economics"],
     "abstract" => "<jats:p>Housing&nbsp;costs &amp; supply.</jats:p>",
     "URL" => "https://doi.org/10.1234/AbC",
+    "created" => Dict("date-time" => "2024-03-05T11:12:13Z", "date-parts" => [[2024, 3, 5]]),
     "published-online" => Dict("date-parts" => [[2024, 3, 4]]),
     "published-print" => Dict("date-parts" => [[2023, 12, 1]]),
     "issued" => Dict("date-parts" => [[2022]])
@@ -236,6 +237,8 @@ end
   @test paper.journal == "Journal of Economics"
   @test paper.abstracttext == "Housing costs & supply."
   @test paper.publishedat == "2024-03-04"
+  @test paper.createdat == "2024-03-05 11:12:13"
+  @test Journalier._crossrefcreated(Dict("created" => Dict("date-parts" => [[2024, 3, 5]]))) == "2024-03-05"
   @test JSON.parse(paper.rawmetadata)["DOI"] == "10.1234/AbC"
 
   @test Journalier._crossreftext(Dict{String,Any}(), "title"; default="Fallback") == "Fallback"
@@ -249,7 +252,7 @@ end
     "rows" => "12",
     "sort" => "created",
     "order" => "desc",
-    "select" => "DOI,title,author,container-title,abstract,URL,published-online,published-print,issued",
+    "select" => "DOI,title,author,container-title,abstract,URL,created,published-online,published-print,issued",
     "mailto" => "reader+test@example.org"
   ]
   @test length(INITIAL_JOURNALS) == 6
@@ -262,6 +265,7 @@ end
     "author" => [Dict("given" => "Ada", "family" => "Lovelace")],
     "container-title" => ["Journal of Urban Economics"],
     "URL" => "https://doi.org/10.1234/collector",
+    "created" => Dict("date-time" => "2026-01-03T04:05:06Z", "date-parts" => [[2026, 1, 3]]),
     "published-online" => Dict("date-parts" => [[2026, 1, 2]])
   )
   missingdoi = Dict{String,Any}("title" => ["Record without DOI"])
@@ -287,18 +291,21 @@ end
         @test firstsummary == (journal=journal.name, fetched=2, inserted=1, updated=0, skipped=1)
 
         paper = only(getpapers(db))
+        @test paper.created_at == "2026-01-03 04:05:06"
         @test toggleread(db, paper.doi)
         @test togglesaved(db, paper.doi)
         firstseen = paper.first_seen_at
 
         updateditem = copy(item)
         updateditem["title"] = ["Updated title"]
+        pop!(updateditem, "created")
         items[] = Any[updateditem, missingdoi]
         secondsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
         @test secondsummary == (journal=journal.name, fetched=2, inserted=0, updated=1, skipped=1)
         paper = only(getpapers(db))
         @test paper.title == "Updated title"
         @test paper.first_seen_at == firstseen
+        @test paper.created_at == "2026-01-03 04:05:06"
         @test paper.is_read
         @test paper.is_saved
         @test length(getpapers(db)) == 1
@@ -320,6 +327,55 @@ end
     end
   finally
     HTTP.forceclose(server)
+  end
+end
+
+@testset "Paper ordering and schema migration" begin
+  mktempdir() do dir
+    db = Journalier.SQLite.DB(joinpath(dir, "legacy.db"))
+    try
+      Journalier.DBInterface.execute(
+        db,
+        """
+        CREATE TABLE papers (
+          doi TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          authors TEXT NOT NULL DEFAULT '',
+          journal TEXT NOT NULL DEFAULT '',
+          abstract TEXT,
+          url TEXT,
+          published_at TEXT,
+          first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          source TEXT NOT NULL DEFAULT 'crossref',
+          raw_metadata TEXT NOT NULL DEFAULT '{}',
+          is_read INTEGER NOT NULL DEFAULT 0,
+          is_saved INTEGER NOT NULL DEFAULT 0
+        )
+        """
+      )
+      Journalier.DBInterface.execute(
+        db,
+        "INSERT INTO papers (doi, title, first_seen_at) VALUES (?, ?, ?)",
+        ("10.1234/first-seen", "First seen first", "2026-01-03 00:00:00")
+      )
+      initializedb(db)
+      @test getpaper(db, "10.1234/first-seen").created_at === nothing
+
+      upsertpaper(db; doi="10.1234/first-seen", title="First seen first", createdat="2025-01-01 00:00:00")
+      upsertpaper(db; doi="10.1234/alpha", title="Alpha", createdat="2026-01-03 00:00:00")
+      upsertpaper(db; doi="10.1234/beta", title="Beta", createdat="2026-01-03 00:00:00")
+      upsertpaper(db; doi="10.1234/older", title="Older created", createdat="2026-01-02 00:00:00")
+      Journalier.DBInterface.execute(db, "UPDATE papers SET first_seen_at = ? WHERE doi != ?", ("2026-01-02 00:00:00", "10.1234/first-seen"))
+
+      @test [paper.doi for paper in getpapers(db)] == [
+        "10.1234/first-seen",
+        "10.1234/alpha",
+        "10.1234/beta",
+        "10.1234/older"
+      ]
+    finally
+      close(db)
+    end
   end
 end
 

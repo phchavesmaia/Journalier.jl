@@ -11,9 +11,10 @@ function initializedb(db)
     		authors TEXT NOT NULL DEFAULT '',
     		journal TEXT NOT NULL DEFAULT '',
     		abstract TEXT,
-    		url TEXT,
-    		published_at TEXT,
-    		first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		url TEXT,
+		published_at TEXT,
+		created_at TEXT,
+		first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     		source TEXT NOT NULL DEFAULT 'crossref',
     		raw_metadata TEXT NOT NULL DEFAULT '{}',
     		is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1)),
@@ -21,6 +22,8 @@ function initializedb(db)
     	)
     """
   )
+  papercolumns = Set(String(row.name) for row in DBInterface.execute(db, "PRAGMA table_info(papers)"))
+  "created_at" in papercolumns || DBInterface.execute(db, "ALTER TABLE papers ADD COLUMN created_at TEXT")
   DBInterface.execute(
     db,
     """
@@ -32,6 +35,10 @@ function initializedb(db)
     """
   )
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_journal_idx ON papers (journal)")
+  DBInterface.execute(
+    db,
+    "CREATE INDEX IF NOT EXISTS papers_order_idx ON papers (first_seen_at DESC, created_at DESC, title COLLATE NOCASE)"
+  )
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_first_seen_idx ON papers (first_seen_at)")
   if !existingjournalstable
     for journal in INITIAL_JOURNALS
@@ -68,6 +75,7 @@ function _paper(row)
     _optionaltext(getproperty(row, Symbol("abstract"))),
     _optionaltext(row.url),
     _optionaltext(row.published_at),
+    _optionaltext(row.created_at),
     String(row.first_seen_at),
     String(row.source),
     String(row.raw_metadata),
@@ -86,6 +94,7 @@ function upsertpaper(
   abstracttext=nothing,
   url=nothing,
   publishedat=nothing,
+  createdat=nothing,
   source="crossref",
   rawmetadata="{}"
 )
@@ -93,8 +102,8 @@ function upsertpaper(
     db,
     """
 	INSERT INTO papers (
-		doi, title, authors, journal, abstract, url, published_at, source, raw_metadata
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		doi, title, authors, journal, abstract, url, published_at, created_at, source, raw_metadata
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(doi) DO UPDATE SET
 		title = excluded.title,
 		authors = excluded.authors,
@@ -102,15 +111,16 @@ function upsertpaper(
 		abstract = excluded.abstract,
 		url = excluded.url,
 		published_at = excluded.published_at,
+		created_at = COALESCE(excluded.created_at, papers.created_at),
 		source = excluded.source,
 		raw_metadata = excluded.raw_metadata
 """,
-    (doi, title, authors, journal, abstracttext, url, publishedat, source, rawmetadata)
+	(doi, title, authors, journal, abstracttext, url, publishedat, createdat, source, rawmetadata)
   )
   getpaper(db, doi)
 end
 
-"""Return papers matching journal, saved, text, first-seen, and limit filters."""
+"""Return filtered papers by first-seen time, Crossref creation date, then title."""
 function getpapers(db; journal=nothing, saved=nothing, query=nothing, firstseenafter=nothing, limit=nothing)
   conditions = String[]
   params = Any[]
@@ -135,7 +145,7 @@ function getpapers(db; journal=nothing, saved=nothing, query=nothing, firstseena
 
   sql = "SELECT * FROM papers"
   isempty(conditions) || (sql *= " WHERE " * join(conditions, " AND "))
-  sql *= " ORDER BY first_seen_at DESC, title COLLATE NOCASE"
+  sql *= " ORDER BY first_seen_at DESC, created_at DESC, title COLLATE NOCASE ASC"
   if limit !== nothing
     limit > 0 || throw(ArgumentError("limit must be positive"))
     sql *= " LIMIT ?"

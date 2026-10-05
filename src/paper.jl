@@ -6,6 +6,7 @@ struct Paper
   abstract_text::Union{Nothing,String}
   url::Union{Nothing,String}
   published_at::Union{Nothing,String}
+  created_at::Union{Nothing,String}
   first_seen_at::String
   source::String
   raw_metadata::String
