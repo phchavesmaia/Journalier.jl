@@ -14,7 +14,7 @@ journalier
 ```
 in your terminal to see what's new in your selected journals.
 
-![Example of usage](./example.png)
+![Example of usage](./example.gif)
 
 ## Installation
 
