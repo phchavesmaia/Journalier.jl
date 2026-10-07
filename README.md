@@ -16,6 +16,8 @@ in your terminal to see what's new in your selected journals.
 
 ![Example of usage](./example.gif)
 
+Journalier also has a search function, which you can access by pressing `/` and typing your keywords. Searches cover author names as well as words in the title or abstract. In the example above, I searched for papers containing the word "transport".
+
 ## Installation
 
 ### Requirements
