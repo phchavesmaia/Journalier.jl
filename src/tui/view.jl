@@ -62,7 +62,7 @@ function _renderjournals(model::ReaderModel, area, buf)
     journal = index == 1 ? nothing : model.journals[index - 1]
     count = journal === nothing ? model.papercount : get(model.journalcounts, journal.issn, 0)
     acronym = journal === nothing ? "All" : journal.acronym
-    marker = selected && journal !== nothing ? "▸ " : "  "
+    marker = journal === nothing ? " " : selected ? "▸ " : "  "
     counttext = string(count)
     labelwidth = area.width - textwidth(counttext) - 2
     label = _fitlabel(marker * acronym, labelwidth) * "  " * counttext
