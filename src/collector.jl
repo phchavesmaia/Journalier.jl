@@ -8,6 +8,11 @@ function collectjournal(
 )
   contact = isempty(strip(mailto)) ? nothing : strip(mailto)
   items = _fetchcrossref(journal.issn; recordsperjournal, mailto=contact, baseurl)
+  collectjournal(db, journal, items)
+end
+
+"""Store already-fetched Crossref works for a journal without another request."""
+function collectjournal(db, journal::Journal, items)
   inserted = 0
   updated = 0
   skipped = 0

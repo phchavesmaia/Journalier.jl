@@ -35,7 +35,7 @@ The command shim is installed under `~/.julia/bin` by default. Add that director
 
 ## First run and configuration
 
-On the first interactive launch, Journalier asks for an optional Crossref contact email if the config file is missing. It creates a missing database, seeds the six starter economics journals, and attempts an initial Crossref collection. If that request fails, the database remains usable and Journalier tells you to retry with `journalier collect`. 
+On the first interactive launch, Journalier asks for an optional Crossref contact email if the config file is missing. It creates a missing database, seeds the six starter economics journals, and attempts an initial Crossref collection. If that request fails, Journalier tells you to retry with `journalier collect`.
 
 Without an interactive terminal, it skips the email prompt and creates a blank config. You can also run `journalier init` to perform first-run setup explicitly; journals can be managed from the TUI. `journalier paths` prints the active locations, and `journalier config` shows the configuration values.
 

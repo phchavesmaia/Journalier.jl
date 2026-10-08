@@ -107,10 +107,16 @@ function _normalizecrossref(record, journalname)
 end
 
 """Fetch Crossref work records for one ISSN."""
-function _fetchcrossref(issn; recordsperjournal, mailto=nothing, baseurl)
+function _fetchcrossref(issn; recordsperjournal, mailto=nothing, baseurl, requesttimeout=0, retry=true)
   url = _crossrefurl(issn, baseurl)
   useragent = mailto === nothing ? "Journalier/0.1.0" : "Journalier/0.1.0 (mailto:$mailto)"
-  response = HTTP.get(url, ["User-Agent" => useragent]; query=_crossrefquery(recordsperjournal; mailto))
+  response = HTTP.get(
+    url,
+    ["User-Agent" => useragent];
+    query=_crossrefquery(recordsperjournal; mailto),
+    request_timeout=requesttimeout,
+    retry
+  )
   response.status == 200 || error("Crossref request for ISSN $issn returned HTTP $(response.status)")
   payload = JSON.parse(String(response.body))
   message = get(payload, "message", nothing)

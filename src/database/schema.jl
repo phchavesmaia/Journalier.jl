@@ -48,12 +48,15 @@ function initializedb(db)
     db,
     """
     CREATE TABLE IF NOT EXISTS journals (
-      id TEXT PRIMARY KEY,
+      issn TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      issn TEXT NOT NULL UNIQUE
+      acronym TEXT NOT NULL
     )
     """
   )
+  journalcolumns = Set(String(row.name) for row in DBInterface.execute(db, "PRAGMA table_info(journals)"))
+  journalcolumns == Set(("issn", "name", "acronym")) ||
+    throw(ArgumentError("unsupported journals schema; create a new database for this beta version"))
   DBInterface.execute(db, "CREATE INDEX IF NOT EXISTS papers_journal_idx ON papers (journal)")
   DBInterface.execute(db, "DROP INDEX IF EXISTS papers_order_idx")
   DBInterface.execute(
@@ -65,8 +68,8 @@ function initializedb(db)
     for journal in INITIAL_JOURNALS
       DBInterface.execute(
         db,
-        "INSERT INTO journals (id, name, issn) VALUES (?, ?, ?)",
-        (journal.id, journal.name, journal.issn)
+        "INSERT INTO journals (issn, name, acronym) VALUES (?, ?, ?)",
+        (journal.issn, journal.name, journal.acronym)
       )
     end
   end

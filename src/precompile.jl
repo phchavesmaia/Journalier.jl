@@ -20,7 +20,10 @@
         createdat="2026-01-01"
       )
       upsertpaper(db; doi="10.0000/precompile-plain", title="Plain title <with> symbols")
-      model = ReaderModel(db)
+      model = ReaderModel(
+        db;
+        fetchjournal=issn -> [Dict("DOI" => "10.0000/example", "container-title" => ["Example Journal"])]
+      )
       view(model, frame)
       for event in (
         Tachikoma.KeyEvent(:down),
@@ -39,8 +42,17 @@
         Tachikoma.KeyEvent('?'),
         Tachikoma.KeyEvent(:escape),
         Tachikoma.KeyEvent('n'),
-        Tachikoma.KeyEvent('J'),
+        Tachikoma.KeyEvent('1'),
+        Tachikoma.KeyEvent('2'),
+        Tachikoma.KeyEvent('3'),
+        Tachikoma.KeyEvent('4'),
+        Tachikoma.KeyEvent('5'),
+        Tachikoma.KeyEvent('6'),
+        Tachikoma.KeyEvent('7'),
+        Tachikoma.KeyEvent('8'),
         Tachikoma.KeyEvent(:enter),
+        Tachikoma.KeyEvent('X'),
+        Tachikoma.KeyEvent(:backspace),
         Tachikoma.KeyEvent(:escape),
         Tachikoma.KeyEvent('x'),
         Tachikoma.KeyEvent(:escape)

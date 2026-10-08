@@ -1,5 +1,19 @@
+function _fetchconfiguredjournal(issn)
+  config = loadconfig()
+  contact = strip(_crossrefmailto(config))
+  _fetchcrossref(
+    issn;
+    recordsperjournal=config.recordsperjournal,
+    mailto=isempty(contact) ? nothing : contact,
+    baseurl="https://api.crossref.org",
+    requesttimeout=15,
+    retry=false
+  )
+end
+
 Base.@kwdef mutable struct ReaderModel <: Tachikoma.Model
   db = nothing
+  fetchjournal = _fetchconfiguredjournal
   papers::Vector{Paper} = Paper[]
   titles::Dict{String,PreparedTitle} = Dict{String,PreparedTitle}()
   journals::Vector{Journal} = Journal[]
@@ -12,13 +26,15 @@ Base.@kwdef mutable struct ReaderModel <: Tachikoma.Model
   search::String = ""
   mode::Symbol = :reader
   formname::String = ""
+  formacronym::String = ""
   formissn::String = ""
+  formpapers = Any[]
   message::String = ""
   quit::Bool = false
 end
 
-function ReaderModel(db)
-  model = ReaderModel(db=db)
+function ReaderModel(db; fetchjournal=_fetchconfiguredjournal)
+  model = ReaderModel(db=db, fetchjournal=fetchjournal)
   _refreshreader!(model)
   model
 end
@@ -38,13 +54,14 @@ function _periodstart(period; localnow=Dates.now(), utcnow=Dates.now(Dates.UTC))
   Dates.format(utcstart, dateformat"yyyy-mm-dd HH:MM:SS")
 end
 
-function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalid=nothing)
-  selectedid = journalid
-  if selectedid === nothing && 1 < model.journalindex <= length(model.journals) + 1
-    selectedid = model.journals[model.journalindex - 1].id
+function _refreshreader!(model::ReaderModel; preservepaper=nothing, journalissn=nothing)
+  selectedissn = journalissn
+  if selectedissn === nothing && 1 < model.journalindex <= length(model.journals) + 1
+    selectedissn = model.journals[model.journalindex - 1].issn
   end
   model.journals = getjournals(model.db)
-  selectedindex = selectedid === nothing ? nothing : findfirst(journal -> journal.id == selectedid, model.journals)
+  selectedindex =
+    selectedissn === nothing ? nothing : findfirst(journal -> journal.issn == selectedissn, model.journals)
   model.journalindex = selectedindex === nothing ? 1 : selectedindex + 1
   selectedjournal = selectedindex === nothing ? nothing : model.journals[selectedindex]
   saved = model.period == :saved ? true : nothing

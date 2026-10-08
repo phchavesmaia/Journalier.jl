@@ -4,41 +4,89 @@ function _addjournalkey!(model::ReaderModel, event)
   if event.key in (:escape, :ctrl_c)
     model.mode = :reader
     model.formname = ""
+    model.formacronym = ""
     model.formissn = ""
+    model.formpapers = Any[]
     model.message = "Journal addition cancelled."
   elseif event.key == :backspace
-    if model.mode == :journalname
-      isempty(model.formname) || (model.formname = chop(model.formname))
+    if model.mode == :journalacronym
+      isempty(model.formacronym) || (model.formacronym = chop(model.formacronym))
+      _journalacronymmessage!(model)
     else
       isempty(model.formissn) || (model.formissn = chop(model.formissn))
     end
   elseif event.key == :enter
-    if model.mode == :journalname
-      if isempty(strip(model.formname))
-        model.message = "Enter a journal name."
-      else
-        model.mode = :journalissn
-        model.message = "Enter the journal ISSN."
+    if model.mode == :journalissn
+      try
+        issn = _normalizeissn(model.formissn)
+        getjournal(model.db, issn) === nothing || throw(ArgumentError("journal ISSN $issn is already configured"))
+        items = model.fetchjournal(issn)
+        items isa AbstractVector || error("Crossref works must be an array")
+        name = nothing
+        for record in items
+          record isa AbstractDict || error("Crossref work record must be an object")
+          title = _crossreftext(record, "container-title"; default=nothing)
+          title === nothing && continue
+          cleaned = _cleanhtml(title)
+          isempty(cleaned) && continue
+          name = cleaned
+          break
+        end
+        name === nothing && error("Crossref returned no papers with a journal name for ISSN $issn")
+        model.formissn = issn
+        model.formname = name
+        model.formpapers = items
+        model.mode = :journalacronym
+        _journalacronymmessage!(model)
+      catch error
+        error isa InterruptException && rethrow()
+        model.message = "Lookup failed: $(sprint(showerror, error)). Enter to retry or Esc to cancel."
       end
     else
+      if isempty(strip(model.formacronym))
+        model.message = "Enter a journal acronym or abbreviation."
+        return
+      end
       try
-        journal = addjournal(model.db, model.formname, model.formissn)
+        collisions = _acronymcollisions(model.db, model.formacronym)
+        journal, summary = SQLite.transaction(model.db) do
+          journal = addjournal(model.db, model.formname, model.formacronym, model.formissn; warncollision=false)
+          summary = collectjournal(model.db, journal, model.formpapers)
+          (journal, summary)
+        end
         model.mode = :reader
         model.formname = ""
+        model.formacronym = ""
         model.formissn = ""
-        _refreshreader!(model; journalid=journal.id)
-        model.message = "Added $(journal.name)."
+        model.formpapers = Any[]
+        model.period = :all
+        model.search = ""
+        model.paperindex = 1
+        model.focus = :papers
+        _refreshreader!(model; journalissn=journal.issn)
+        model.message =
+          "Added $(journal.name): $(summary.inserted) new papers, $(summary.updated) updated." *
+          (isempty(collisions) ? "" : " Warning: acronym $(journal.acronym) is already in use.")
       catch error
+        error isa InterruptException && rethrow()
         model.message = sprint(showerror, error)
       end
     end
   elseif event.key == :char && isprint(event.char)
-    if model.mode == :journalname
-      model.formname *= string(event.char)
+    if model.mode == :journalacronym
+      model.formacronym *= string(event.char)
+      _journalacronymmessage!(model)
     else
       model.formissn *= string(event.char)
     end
   end
+end
+
+function _journalacronymmessage!(model)
+  collisions = _acronymcollisions(model.db, model.formacronym)
+  model.message =
+    isempty(collisions) ? "Found $(model.formname). Enter an acronym." :
+    "Warning: acronym already used by $(join((journal.name for journal in collisions), ", ")). Duplicates are allowed."
 end
 
 function _removejournalkey!(model::ReaderModel, event)
@@ -47,7 +95,7 @@ function _removejournalkey!(model::ReaderModel, event)
     model.message = "Journal removal cancelled."
   elseif _ischar(event, 'y') || event.key == :enter
     journal = model.journals[model.journalindex - 1]
-    removejournal(model.db, journal.id)
+    removejournal(model.db, journal.issn)
     model.journalindex = 1
     model.mode = :reader
     _refreshreader!(model)
@@ -75,7 +123,7 @@ end
 
 function update!(model::ReaderModel, event::Tachikoma.KeyEvent)
   event.action == Tachikoma.key_release && return
-  if model.mode in (:journalname, :journalissn)
+  if model.mode in (:journalacronym, :journalissn)
     _addjournalkey!(model, event)
     return
   elseif model.mode == :removejournal
@@ -117,10 +165,12 @@ function update!(model::ReaderModel, event::Tachikoma.KeyEvent)
       model.paperindex = clamp(model.paperindex + direction, 1, length(model.papers))
     end
   elseif _ischar(event, 'n')
-    model.mode = :journalname
+    model.mode = :journalissn
     model.formname = ""
+    model.formacronym = ""
     model.formissn = ""
-    model.message = "Enter a journal name."
+    model.formpapers = Any[]
+    model.message = "Enter the journal ISSN to look up its name."
   elseif _ischar(event, 'x')
     if model.journalindex > 1
       model.mode = :removejournal

@@ -38,17 +38,38 @@
   end
 end
 
+@testset "ISSN counts and acronym collisions" begin
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    firstjournal = addjournal(db, "Same name", "ONE", "1234-5678")
+    secondjournal = addjournal(db, "Same name", "TWO", "5678-9012")
+    upsertpaper(db; doi="10.example/one", title="One", journal=firstjournal.name, journalissn=firstjournal.issn)
+    upsertpaper(db; doi="10.example/two", title="Two", journal=secondjournal.name, journalissn=secondjournal.issn)
+    upsertpaper(db; doi="10.example/alias", title="Alias", journal="Different title", journalissn=firstjournal.issn)
+    upsertpaper(db; doi="10.example/unassigned", title="Unassigned")
+    @test getjournalcounts(db) ==
+          [(issn=nothing, papercount=1), (issn="1234-5678", papercount=2), (issn="5678-9012", papercount=1)]
+    @test_logs (:warn, r"acronym ONE is already used by Same name") addjournal(db, "Collision", " one ", "9876-5432")
+    @test getjournal(db, "9876-5432").acronym == "ONE"
+    @test_throws Exception addjournal(db, "Duplicate ISSN", "OTHER", "12345678")
+    @test length(Journalier._acronymcollisions(db, "one")) == 2
+  finally
+    close(db)
+  end
+end
+
 @testset "Collector persistence" begin
   mktempdir() do dir
     db = initializedb(joinpath(dir, "papers.db"))
     try
       @test length(getjournals(db)) == 6
-      addedjournal = addjournal(db, "Sample Journal", "1234-567x")
+      addedjournal = addjournal(db, "Sample Journal", "SJ", "1234-567x")
       @test addedjournal.issn == "1234-567X"
-      @test getjournal(db, addedjournal.id).name == addedjournal.name
-      @test getjournal(db, addedjournal.id).issn == addedjournal.issn
-      @test removejournal(db, addedjournal.id)
-      @test !removejournal(db, addedjournal.id)
+      @test addedjournal.acronym == "SJ"
+      @test getjournal(db, addedjournal.issn).name == addedjournal.name
+      @test getjournal(db, addedjournal.issn).acronym == addedjournal.acronym
+      @test removejournal(db, addedjournal.issn)
+      @test !removejournal(db, addedjournal.issn)
 
       normalized = Journalier._normalizecrossref(
         Dict(
@@ -86,7 +107,7 @@ end
       @test only(getpapers(db; query="updated")).doi == first.doi
 
       for journal in getjournals(db)
-        @test removejournal(db, journal.id)
+        @test removejournal(db, journal.issn)
       end
       initializedb(db)
       @test isempty(getjournals(db))

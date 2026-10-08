@@ -1,11 +1,3 @@
-function _journalabbreviation(journal::Journal)
-  all(isletter, journal.id) && return uppercase(journal.id)
-  ignored = ("a", "an", "and", "for", "in", "of", "on", "the", "to", "with")
-  words = [join(filter(isletter, word)) for word in split(journal.name)]
-  words = filter(word -> !isempty(word) && !(lowercase(word) in ignored), words)
-  isempty(words) ? "?" : uppercase(join(first(word) for word in words))
-end
-
 function _wraptext(text, width)
   width > 0 || return String[]
   lines = String[]
@@ -48,19 +40,34 @@ function _renderheader(model::ReaderModel, area, buf)
   end
 end
 
+function _fitlabel(text, width)
+  width > 0 || return ""
+  textwidth(text) <= width && return text
+  prefix = IOBuffer()
+  used = 0
+  for character in text
+    used + textwidth(character) <= width - 1 || break
+    print(prefix, character)
+    used += textwidth(character)
+  end
+  String(take!(prefix)) * "…"
+end
+
 function _renderjournals(model::ReaderModel, area, buf)
   area.height > 0 || return
   firstindex = max(1, model.journalindex - area.height + 1)
   lastindex = min(length(model.journals) + 1, firstindex + area.height - 1)
   for (offset, index) in enumerate(firstindex:lastindex)
     selected = model.journalindex == index
-    label = if index == 1
-      " All  $(model.papercount)"
-    else
-      journal = model.journals[index - 1]
-      marker = selected ? "▸ " : "  "
-      count = get(model.journalcounts, journal.issn, 0)
-      "$(marker)$(_journalabbreviation(journal))  $(count)"
+    journal = index == 1 ? nothing : model.journals[index - 1]
+    count = journal === nothing ? model.papercount : get(model.journalcounts, journal.issn, 0)
+    acronym = journal === nothing ? "All" : journal.acronym
+    marker = selected && journal !== nothing ? "▸ " : "  "
+    counttext = string(count)
+    labelwidth = area.width - textwidth(counttext) - 2
+    label = _fitlabel(marker * acronym, labelwidth) * "  " * counttext
+    if labelwidth < 0
+      label = _fitlabel(counttext, area.width)
     end
     set_string!(buf, area.x, area.y + offset - 1, label, tstyle(selected ? :accent : :primary, bold=selected), area)
   end
@@ -158,10 +165,16 @@ function _renderdialog(model::ReaderModel, area, buf)
       "Stored papers will be kept.",
       "Press y to remove or Esc to cancel."
     ]
-  elseif model.mode == :journalname
-    ["Journal name:", model.formname * "▏", "Enter to continue · Esc to cancel", model.message]
+  elseif model.mode == :journalacronym
+    [
+      model.formname,
+      "Journal acronym/abbreviation:",
+      model.formacronym * "▏",
+      "Enter to save · Esc to cancel",
+      model.message
+    ]
   else
-    ["ISSN:", model.formissn * "▏", "Enter to save · Esc to cancel", model.message]
+    ["ISSN:", model.formissn * "▏", "Enter to look up name · Esc to cancel", model.message]
   end
   height = model.mode == :help ? length(lines) + 2 : model.mode == :removejournal ? 5 : 7
   (width < 20 || area.height < height + 2) && return
@@ -202,5 +215,5 @@ function view(model::ReaderModel, frame::Tachikoma.Frame)
   searchlabel = model.mode == :search ? "/$(model.search)▏" : isempty(model.search) ? "" : "Search: $(model.search)"
   footer = "t today  w week  a all  f saved  Tab pane  / search  r read  s save  o open  n add  x remove selected journal  ? help  q quit  $(searchlabel)  $(model.message)"
   set_string!(buf, rows[3].x, rows[3].y, footer, tstyle(:text_dim), rows[3])
-  model.mode in (:help, :journalname, :journalissn, :removejournal) && _renderdialog(model, frame.area, buf)
+  model.mode in (:help, :journalacronym, :journalissn, :removejournal) && _renderdialog(model, frame.area, buf)
 end

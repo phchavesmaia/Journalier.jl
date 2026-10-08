@@ -45,6 +45,54 @@
   @test length(INITIAL_JOURNALS) == 6
 end
 
+@testset "Add journal from one collection request" begin
+  items = [
+    Dict(
+      "DOI" => "10.example/initial-$index",
+      "title" => ["Paper $index"],
+      "container-title" => ["Journal &amp; Economics"]
+    ) for index in 1:100
+  ]
+  requests = String[]
+  server = HTTP.serve!("127.0.0.1", 0; listenany=true) do request
+    push!(requests, request.target)
+    HTTP.Response(200; body=JSON.json(Dict("message" => Dict("items" => items))))
+  end
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    baseurl = "http://127.0.0.1:$(HTTP.port(server))"
+    model = Journalier.ReaderModel(
+      db;
+      fetchjournal=issn ->
+        Journalier._fetchcrossref(issn; recordsperjournal=100, mailto="reader@example.org", baseurl)
+    )
+    model.period = :saved
+    model.search = "no match"
+    Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+    foreach(c -> Tachikoma.update!(model, Tachikoma.KeyEvent(c)), "1234567x")
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :journalacronym
+    @test model.formname == "Journal & Economics"
+    @test getjournal(db, "1234-567X") === nothing
+    @test isempty(getpapers(db))
+    foreach(c -> Tachikoma.update!(model, Tachikoma.KeyEvent(c)), "JE")
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :reader
+    @test length(model.papers) == 100
+    @test length(getpapers(db)) == 100
+    @test model.journalcounts["1234-567X"] == 100
+    @test model.period == :all
+    @test isempty(model.search)
+    @test isempty(model.formpapers)
+    @test startswith(only(requests), "/journals/1234-567X/works?")
+    @test HTTP.queryparams(HTTP.URI(only(requests)))["mailto"] == "reader@example.org"
+    @test HTTP.queryparams(HTTP.URI(only(requests)))["rows"] == "100"
+  finally
+    close(db)
+    HTTP.forceclose(server)
+  end
+end
+
 @testset "Crossref collection requests" begin
   item = Dict{String,Any}(
     "DOI" => "10.1234/collector",
@@ -73,7 +121,7 @@ end
     mktempdir() do dir
       db = initializedb(joinpath(dir, "papers.db"))
       try
-        journal = addjournal(db, "Urban economics", "1234-5678")
+        journal = addjournal(db, "Urban economics", "UE", "1234-5678")
         baseurl = "http://127.0.0.1:$(HTTP.port(server))"
         firstsummary = collectjournal(db, journal; recordsperjournal=2, mailto="reader+test@example.org", baseurl)
         @test firstsummary == (journal=journal.name, fetched=3, inserted=1, updated=0, skipped=2)
@@ -84,20 +132,20 @@ end
         @test paper.title_html == "First title"
         @test JSON.parse(getrawmetadata(db, paper.doi))["title"] == ["First title"]
         model = Journalier.ReaderModel(db)
-        Journalier._selectjournal!(model, findfirst(candidate -> candidate.id == journal.id, model.journals) + 1)
+        Journalier._selectjournal!(model, findfirst(candidate -> candidate.issn == journal.issn, model.journals) + 1)
         @test only(model.papers).doi == paper.doi
         @test model.journalcounts[journal.issn] == 1
         officialindex = findfirst(candidate -> candidate.issn == "0094-1190", model.journals)
         Journalier._selectjournal!(model, officialindex + 1)
         @test isempty(model.papers)
-        @test removejournal(db, journal.id)
-        journal = addjournal(db, "Economics alias", journal.issn)
-        Journalier._refreshreader!(model; journalid=journal.id)
+        @test removejournal(db, journal.issn)
+        journal = addjournal(db, "Journal alias", "JA", journal.issn)
+        Journalier._refreshreader!(model; journalissn=journal.issn)
         @test only(model.papers).doi == paper.doi
-        duplicate = addjournal(db, journal.name, "5678-9012")
+        duplicate = addjournal(db, journal.name, "EN", "5678-9012")
         Journalier._refreshreader!(model)
-        @test model.journals[model.journalindex - 1].id == journal.id
-        @test removejournal(db, duplicate.id)
+        @test model.journals[model.journalindex - 1].issn == journal.issn
+        @test removejournal(db, duplicate.issn)
         @test paper.created_at == "2026-01-03 04:05:06"
         @test toggleread(db, paper.doi)
         @test togglesaved(db, paper.doi)

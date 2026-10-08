@@ -57,6 +57,153 @@
   end
 end
 
+@testset "Journal collection staging and rollback" begin
+  db = initializedb(Journalier.SQLite.DB())
+  records = Any[
+    Dict("DOI" => "10.example/existing", "title" => ["Updated"], "container-title" => ["New Journal"]),
+    Dict("DOI" => "10.example/bad", "author" => "invalid")
+  ]
+  try
+    upsertpaper(db; doi="10.example/existing", title="Original")
+    model = Journalier.ReaderModel(db; fetchjournal=issn -> records)
+    for badresponse in (Any[], Any[Dict("DOI" => "10.example/unnamed")])
+      model.fetchjournal = issn -> badresponse
+      Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+      foreach(c -> Tachikoma.update!(model, Tachikoma.KeyEvent(c)), "12345678")
+      Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+      @test model.mode == :journalissn
+      @test occursin("no papers with a journal name", model.message)
+      @test getjournal(db, "1234-5678") === nothing
+      Tachikoma.update!(model, Tachikoma.KeyEvent(:escape))
+    end
+    model.fetchjournal = issn -> records
+    Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+    foreach(c -> Tachikoma.update!(model, Tachikoma.KeyEvent(c)), "12345678")
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:escape))
+    @test isempty(model.formpapers)
+    @test getjournal(db, "1234-5678") === nothing
+    @test getpaper(db, "10.example/existing").title == "Original"
+    Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+    foreach(c -> Tachikoma.update!(model, Tachikoma.KeyEvent(c)), "12345678")
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    foreach(c -> Tachikoma.update!(model, Tachikoma.KeyEvent(c)), "NJ")
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :journalacronym
+    @test getjournal(db, "1234-5678") === nothing
+    @test getpaper(db, "10.example/existing").title == "Original"
+    @test getpaper(db, "10.example/bad") === nothing
+    @test occursin("author field must be an array", model.message)
+    pop!(records)
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :reader
+    @test getjournal(db, "1234-5678").name == "New Journal"
+    @test only(model.papers).title == "Updated"
+  finally
+    close(db)
+  end
+end
+
+@testset "ISSN lookup addition and retry" begin
+  db = initializedb(Journalier.SQLite.DB())
+  calls = String[]
+  fail = Ref(true)
+  lookup =
+    issn -> begin
+      push!(calls, issn)
+      fail[] && error("Lookup service unavailable")
+      [Dict("DOI" => "10.example/resolved", "title" => ["Resolved Paper"], "container-title" => ["Resolved Journal"])]
+    end
+  try
+    model = Journalier.ReaderModel(db; fetchjournal=lookup)
+    Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+    @test model.mode == :journalissn
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test isempty(calls)
+    for character in "12345678"
+      Tachikoma.update!(model, Tachikoma.KeyEvent(character))
+    end
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :journalissn
+    @test occursin("Lookup service unavailable", model.message)
+    @test getjournal(db, "1234-5678") === nothing
+    fail[] = false
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :journalacronym
+    @test model.formissn == "1234-5678"
+    @test model.formname == "Resolved Journal"
+    backend = Tachikoma.TestBackend(100, 30)
+    frame =
+      Tachikoma.Frame(backend.buf, Tachikoma.Rect(1, 1, 100, 30), Tachikoma.GraphicsRegion[], Tachikoma.PixelSnapshot[])
+    Tachikoma.view(model, frame)
+    @test Tachikoma.find_text(backend, "Resolved Journal") !== nothing
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :journalacronym
+    for character in "RJ"
+      Tachikoma.update!(model, Tachikoma.KeyEvent(character))
+    end
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test getjournal(db, "1234-5678").name == "Resolved Journal"
+    @test getjournal(db, "1234-5678").acronym == "RJ"
+    @test model.journals[model.journalindex - 1].issn == "1234-5678"
+    @test calls == ["1234-5678", "1234-5678"]
+    @test only(model.papers).doi == "10.example/resolved"
+    Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+    for character in "12345678"
+      Tachikoma.update!(model, Tachikoma.KeyEvent(character))
+    end
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test occursin("already configured", model.message)
+    @test length(calls) == 2
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:escape))
+    @test model.mode == :reader
+    @test model.formissn == model.formname == model.formacronym == ""
+  finally
+    close(db)
+  end
+end
+
+@testset "Acronym display and collision warning" begin
+  db = initializedb(Journalier.SQLite.DB())
+  try
+    model = Journalier.ReaderModel(
+      db;
+      fetchjournal=issn -> [Dict("DOI" => "10.example/another", "container-title" => ["Another Urban Journal"])]
+    )
+    Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
+    for character in "1234-5678"
+      Tachikoma.update!(model, Tachikoma.KeyEvent(character))
+    end
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    for character in "jue"
+      Tachikoma.update!(model, Tachikoma.KeyEvent(character))
+    end
+    @test model.mode == :journalacronym
+    @test occursin("Warning: acronym already used", model.message)
+    Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+    @test model.mode == :reader
+    @test getjournal(db, "1234-5678").acronym == "JUE"
+    @test occursin("Warning: acronym JUE is already in use", model.message)
+
+    for (index, acronym) in enumerate(("LONGJOURNALACRONYM", repeat("界", 12)))
+      journal = addjournal(db, "Long acronym $index", acronym, lpad(string(index), 8, '0'))
+      Journalier._refreshreader!(model; journalissn=journal.issn)
+      model.journalcounts[journal.issn] = 1234
+      for width in (16, 10)
+        backend = Tachikoma.TestBackend(width, 1)
+        Journalier._renderjournals(model, Tachikoma.Rect(1, 1, width, 1), backend.buf)
+        @test Tachikoma.find_text(backend, "1234") !== nothing
+        @test Tachikoma.find_text(backend, "…") !== nothing
+      end
+    end
+    @test Journalier._fitlabel("界界界", 4) == "界…"
+    @test Journalier._fitlabel("ABC", 1) == "…"
+    @test Journalier._fitlabel("ABC", 0) == ""
+  finally
+    close(db)
+  end
+end
+
 @testset "Reader model and view" begin
   mktempdir() do dir
     db = initializedb(joinpath(dir, "papers.db"))
@@ -144,7 +291,7 @@ end
       @test model.focus == :papers
 
       Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
-      @test model.mode == :journalname
+      @test model.mode == :journalissn
       addbackend = Tachikoma.TestBackend(100, 30)
       addframe = Tachikoma.Frame(
         addbackend.buf,
@@ -160,18 +307,22 @@ end
       Tachikoma.update!(model, Tachikoma.KeyEvent(:escape))
       @test model.mode == :reader
       Tachikoma.update!(model, Tachikoma.KeyEvent('n'))
-      foreach(character -> Tachikoma.update!(model, Tachikoma.KeyEvent(character)), "New Journal")
-      Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+      model.fetchjournal = issn -> [Dict("DOI" => "10.example/new", "container-title" => ["New Journal"])]
       foreach(character -> Tachikoma.update!(model, Tachikoma.KeyEvent(character)), "5678-9012")
       Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
+      foreach(character -> Tachikoma.update!(model, Tachikoma.KeyEvent(character)), "NJ")
+      Tachikoma.update!(model, Tachikoma.KeyEvent(:enter))
       @test any(journal -> journal.name == "New Journal", getjournals(db))
+      @test getjournal(db, "5678-9012").acronym == "NJ"
       @test model.journals[model.journalindex - 1].name == "New Journal"
       Tachikoma.update!(model, Tachikoma.KeyEvent('x'))
       Tachikoma.update!(model, Tachikoma.KeyEvent('y'))
       @test !any(journal -> journal.name == "New Journal", getjournals(db))
       @test getpaper(db, "10.1234/first") !== nothing
+      @test getpaper(db, "10.example/new") !== nothing
 
       Tachikoma.update!(model, Tachikoma.KeyEvent('a'))
+      Journalier._refreshreader!(model; preservepaper="10.1234/first")
       renderbackend = Tachikoma.TestBackend(120, 36)
       frame = Tachikoma.Frame(
         renderbackend.buf,
@@ -191,7 +342,7 @@ end
         Tachikoma.char_at(renderbackend, x, y) == 'S' && Tachikoma.style_at(renderbackend, x, y).italic for
         y in 1:renderbackend.height for x in 1:renderbackend.width
       )
-      @test Journalier._journalabbreviation(Journal("12345678", "New Journal of Economics", "1234-5678")) == "NJE"
+      @test INITIAL_JOURNALS[1].acronym == "JUE"
 
       Tachikoma.update!(model, Tachikoma.KeyEvent('?'))
       helpbackend = Tachikoma.TestBackend(100, 30)
@@ -254,9 +405,9 @@ end
   db = initializedb(Journalier.SQLite.DB())
   try
     for index in 1:20
-      addjournal(db, "Example $index", lpad(string(index), 8, '0'))
+      addjournal(db, "Example $index", "E$index", lpad(string(index), 8, '0'))
     end
-    addjournal(db, "Zebra Quartz", "9876-5432")
+    addjournal(db, "Zebra Quartz", "ZQ", "9876-5432")
     model = Journalier.ReaderModel(db)
     model.focus = :journals
     for height in (1, 3, 8)
@@ -271,7 +422,7 @@ end
             "All  0"
           else
             journal = model.journals[model.journalindex - 1]
-            "▸ $(Journalier._journalabbreviation(journal))  0"
+            "▸ $(journal.acronym)  0"
           end
           @test Tachikoma.find_text(backend, label) !== nothing
         end
