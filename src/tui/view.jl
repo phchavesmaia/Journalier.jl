@@ -24,7 +24,7 @@ function _renderinline!(buf, x, y, segments, area; color=:primary, bold=false)
 end
 
 function _renderheader(model::ReaderModel, area, buf)
-  labels = ((:today, "Today"), (:week, "This Week"), (:all, "All"), (:saved, "Saved"))
+  labels = ((:today, "1 Today"), (:week, "2 This Week"), (:all, "3 All"), (:saved, "4 Saved"))
   x = area.x
   for (period, label) in labels
     text = period == model.period ? "[$label]" : " $label "
@@ -143,10 +143,10 @@ function _renderdialog(model::ReaderModel, area, buf)
   width = min(area.width - 4, 64)
   lines = if model.mode == :help
     [
-      "t  Show papers added today",
-      "w  Show papers added this week",
-      "a  Show all papers",
-      "f  Show saved papers",
+      "1  Show papers added today",
+      "2  Show papers added this week",
+      "3  Show all papers",
+      "4  Show saved papers",
       "Tab  Switch between journals and papers",
       "/  Search papers",
       "Esc  Cancel search or close dialog",
@@ -194,7 +194,7 @@ end
 
 function view(model::ReaderModel, frame::Tachikoma.Frame)
   buf = frame.buffer
-  area = render(Block(title="Journalier"), frame.area, buf)
+  area = render(Block(title="Journalier", border_style=tstyle(:text_dim)), frame.area, buf)
   rows = split_layout(Layout(Vertical, [Fixed(1), Fill(), Fixed(1)]), area)
   length(rows) == 3 || return
   _renderheader(model, rows[1], buf)
@@ -204,16 +204,19 @@ function view(model::ReaderModel, frame::Tachikoma.Frame)
   selectedjournal = model.journalindex == 1 ? nothing : model.journals[model.journalindex - 1]
   paperlabel = selectedjournal === nothing ? "Papers" : "Papers — $(selectedjournal.name)"
   papertitle = model.focus == :papers ? "$(paperlabel) •" : paperlabel
-  journalarea = render(Block(title=journaltitle), panes[1], buf)
+  journalstyle = tstyle(model.focus == :journals ? :accent : :text_dim, bold=model.focus == :journals)
+  journalarea = render(Block(title=journaltitle, title_style=journalstyle, border_style=journalstyle), panes[1], buf)
   readerrows = split_layout(Layout(Vertical, [Percent(55), Fill()]), panes[2])
   length(readerrows) == 2 || return
-  paperarea = render(Block(title=papertitle), readerrows[1], buf)
-  detailarea = render(Block(title="Paper"), readerrows[2], buf)
+  paperstyle = tstyle(model.focus == :papers ? :accent : :text_dim, bold=model.focus == :papers)
+  paperarea = render(Block(title=papertitle, title_style=paperstyle, border_style=paperstyle), readerrows[1], buf)
+  detailarea =
+    render(Block(title="Paper", title_style=tstyle(:text_dim), border_style=tstyle(:text_dim)), readerrows[2], buf)
   _renderjournals(model, journalarea, buf)
   _renderpapers(model, paperarea, buf)
   _renderdetails(model, detailarea, buf)
   searchlabel = model.mode == :search ? "/$(model.search)▏" : isempty(model.search) ? "" : "Search: $(model.search)"
-  footer = "t today  w week  a all  f saved  Tab pane  / search  r read  s save  o open  n add  x remove selected journal  ? help  q quit  $(searchlabel)  $(model.message)"
+  footer = "Tab pane  / search  r read  s save  o open  n add  x remove selected journal  ? help  q quit  $(searchlabel)  $(model.message)"
   set_string!(buf, rows[3].x, rows[3].y, footer, tstyle(:text_dim), rows[3])
   model.mode in (:help, :journalacronym, :journalissn, :removejournal) && _renderdialog(model, frame.area, buf)
 end

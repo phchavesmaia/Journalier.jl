@@ -254,15 +254,15 @@ end
       Tachikoma.update!(model, Tachikoma.KeyEvent('s'))
       @test getpaper(db, "10.1234/first").is_saved
 
-      Tachikoma.update!(model, Tachikoma.KeyEvent('t'))
+      Tachikoma.update!(model, Tachikoma.KeyEvent('1'))
       @test length(model.papers) == 1
-      Tachikoma.update!(model, Tachikoma.KeyEvent('w'))
+      Tachikoma.update!(model, Tachikoma.KeyEvent('2'))
       @test length(model.papers) == 1
-      Tachikoma.update!(model, Tachikoma.KeyEvent('a'))
+      Tachikoma.update!(model, Tachikoma.KeyEvent('3'))
       @test length(model.papers) == 2
-      Tachikoma.update!(model, Tachikoma.KeyEvent('f'))
+      Tachikoma.update!(model, Tachikoma.KeyEvent('4'))
       @test only(model.papers).doi == "10.1234/first"
-      Tachikoma.update!(model, Tachikoma.KeyEvent('a'))
+      Tachikoma.update!(model, Tachikoma.KeyEvent('3'))
       targetqje = findfirst(journal -> journal.name == "Quarterly Journal of Economics", model.journals)
       Journalier._selectjournal!(model, targetqje + 1)
       @test only(model.papers).doi == "10.1234/second"
@@ -321,7 +321,7 @@ end
       @test getpaper(db, "10.1234/first") !== nothing
       @test getpaper(db, "10.example/new") !== nothing
 
-      Tachikoma.update!(model, Tachikoma.KeyEvent('a'))
+      Tachikoma.update!(model, Tachikoma.KeyEvent('3'))
       Journalier._refreshreader!(model; preservepaper="10.1234/first")
       renderbackend = Tachikoma.TestBackend(120, 36)
       frame = Tachikoma.Frame(
@@ -355,10 +355,10 @@ end
       Tachikoma.view(model, helpframe)
       @test Tachikoma.find_text(helpbackend, "Keyboard help") !== nothing
       helpcommands = (
-        "t  Show papers added today",
-        "w  Show papers added this week",
-        "a  Show all papers",
-        "f  Show saved papers",
+        "1  Show papers added today",
+        "2  Show papers added this week",
+        "3  Show all papers",
+        "4  Show saved papers",
         "Tab  Switch between journals and papers",
         "/  Search papers",
         "Esc  Cancel search or close dialog",

@@ -145,13 +145,13 @@ function update!(model::ReaderModel, event::Tachikoma.KeyEvent)
     model.quit = true
   elseif event.key == :tab
     model.focus = model.focus == :journals ? :papers : :journals
-  elseif _ischar(event, 't')
+  elseif _ischar(event, '1')
     _setperiod!(model, :today)
-  elseif _ischar(event, 'w')
+  elseif _ischar(event, '2')
     _setperiod!(model, :week)
-  elseif _ischar(event, 'a')
+  elseif _ischar(event, '3')
     _setperiod!(model, :all)
-  elseif _ischar(event, 'f')
+  elseif _ischar(event, '4')
     _setperiod!(model, :saved)
   elseif _ischar(event, '/')
     model.mode = :search
