@@ -25,14 +25,20 @@ Journalier also has a search function, which you can access by pressing `/` and 
 Journalier requires Julia 1.12 or later. Crossref collection needs an internet connection.
 
 ### The `journalier` command
-Julia's package manager can install a package app from a checkout. In the Julia REPL, run:
+Install Journalier using Julia's package manager. In the Julia REPL, press `]` to enter package mode, then run:
 
 ```julia
-using Pkg
-Pkg.Apps.develop(path="/absolute/path/to/Journalier")
+pkg> app add Journalier
 ```
 
-The command shim is installed under `~/.julia/bin` by default. Add that directory to your `PATH`, then run `journalier`. The package app interface is experimental in Pkg, so the local `bin/journalier` launcher remains available as a reliable checkout-based option.
+The `journalier` launcher is installed under `~/.julia/bin` by default. Add that directory to your `PATH` if it isn't already included, then run in your terminal:
+
+```bash
+> journalier
+```
+
+
+Pkg's app support is experimental. For users working from a local checkout, the repository's `bin/journalier` launcher remains available as an alternative.
 
 ## First run and configuration
 
