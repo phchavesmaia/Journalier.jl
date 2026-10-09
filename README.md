@@ -2,6 +2,7 @@
 [![Coverage](https://codecov.io/gh/phchavesmaia/Journalier.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/phchavesmaia/Journalier.jl)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Julia 1.12+](https://img.shields.io/badge/julia-%E2%89%A5%201.12-9558B2?logo=julia&logoColor=white)]()
+[![DOI](https://zenodo.org/badge/1405006383.svg)](https://doi.org/10.5281/zenodo.23249452)
 
 # Journalier.jl
 
