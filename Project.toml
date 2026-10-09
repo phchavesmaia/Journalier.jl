@@ -1,6 +1,6 @@
 name = "Journalier"
 uuid = "067964a0-596a-4cf7-ba3c-b3397f9c88be"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Pedro H. Chaves Maia"]
 
 [deps]
